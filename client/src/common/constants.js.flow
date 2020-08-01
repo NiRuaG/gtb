@@ -1,0 +1,6 @@
+//@flow
+
+declare module.exports: {
+  MIN_PLAYERS: number,
+  MAX_PLAYERS: number,
+};
