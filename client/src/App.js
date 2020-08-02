@@ -27,14 +27,15 @@ const Diagnostics: StyledComponent<Empty, Empty, HTMLDivElement> = styled.div`
   position: fixed;
   bottom: 2rem;
   right: 2rem;
-  border: 1px solid black;
   padding: 0.5rem;
+  border: 1px solid black;
+  border-radius: 0.5rem;
 `;
 
 type $Nullable<T> = T | null;
 
 type Name = string;
-type Index = number;
+type ID = string;
 
 // type Side = "good" | "evil";
 // type Char = {|
@@ -44,8 +45,10 @@ type Index = number;
 // |};
 
 type User = {|
-  +name?: $Nullable<Name>,
+  +id: ID,
+  +name: ?Name,
   +privileged: boolean,
+  +permitted: boolean,
 |};
 type Users = $ReadOnlyArray<User>;
 
@@ -82,7 +85,7 @@ export default () => {
 
   const [amConnected, setAmConnected] = useState(false);
   const [users, setUsers] = useState<Users>([]);
-  const [myIndex, setMyIndex] = useState<number | null>(null);
+  const [myID, setMyID] = useState<$Nullable<ID>>(null);
   const [formName, setFormName] = useState<$Nullable<Name>>(null);
   // const [isReady, setIsReady] = useState(false);
   // const [publicInfo, setPublicInfo] = useState<$Nullable<PubInfo>>(null);
@@ -94,9 +97,9 @@ export default () => {
     // socket.on("connect", () => console.log("connect"));
     // socket.on("disconnect", () => console.log("disconnect"));
     socket.on<boolean, void>("connected", setAmConnected);
-    socket.on<Users, Index, void>("users", (users, index) => {
+    socket.on<Users, ID, void>("users", (users, ID) => {
       setUsers(users);
-      setMyIndex(index);
+      setMyID(ID);
     });
     // socket.on("ready", setIsReady);
     // socket.on("public", setPublicInfo);
@@ -105,6 +108,20 @@ export default () => {
       socket.close();
     };
   }, []);
+
+  //? maybe consider other way than finding each time
+  //? construct users as a map?
+  const myUser = (myID != null && users.find(({id}) => id === myID)) || {};
+  const {
+    privileged: amPrivileged = false,
+    permitted: amPermitted = false,
+  } = myUser;
+  const amAnon = !myUser.name;
+
+  const [{length: anonUsersLen}, namedUsers] = partition<User>(
+    ({name}) => !name,
+  )(users);
+  const permittedUsers = users.filter(({permitted}) => permitted);
 
   const handleNameChange = (event: SyntheticEvent<HTMLInputElement>) => {
     setFormName(sanitizedName(event.currentTarget.value));
@@ -116,22 +133,9 @@ export default () => {
     return socket?.emit("name", formName);
   };
 
-  const handleStart = () => {
-    return privileged && socket?.emit("start");
-  };
-
-  const myUser: User = (myIndex != null && users[myIndex]) || {
-    privileged: false,
-    // isLeader: false,
-  };
-
-  const {privileged, name: myName /* isLeader: amLeader */} = myUser;
-  //? check name ~= formName
-
-  const [{length: anonUsersLen}, namedUsers] = partition<User>(
-    ({name}) => !name,
-  )(users);
-  const amAnon = !myName;
+  const handleStart = () => amPrivileged && socket?.emit("start");
+  const togglePermission = ({id, permitted}) =>
+    amPrivileged && socket?.emit("permit", id, !permitted);
 
   return (
     <>
@@ -139,16 +143,10 @@ export default () => {
         <div style={{marginLeft: "5rem"}}>
           {amConnected && (
             <>
-              {privileged && (
-                <button disabled={true /*!isReady*/} onClick={handleStart}>
-                  Start
-                </button>
-              )}
-
               <form onSubmit={handleNameSubmit}>
                 <input
                   type="text"
-                  placeholder="Your name"
+                  placeholder="Name"
                   autoFocus
                   value={formName ?? ""}
                   onChange={handleNameChange}
@@ -156,28 +154,42 @@ export default () => {
               </form>
 
               <div>
-                <p>Users connected: {users.length}</p>
-                {namedUsers.map((user, idx) => {
-                  const {name} = user;
-                  return (
-                    <Player
-                      key={name + idx}
-                      user={user}
-                      self={name === myUser.name}
-                    />
-                  );
-                })}
+                <p>{users.length} users connected</p>
+                {permittedUsers.length > 0 && (
+                  <p>
+                    {permittedUsers.length}
+                    {permittedUsers.length > 1 ? " users" : " user"}
+                    {` playing: ${permittedUsers
+                      .map(({name}) => name)
+                      .join(", ")}`}
+                  </p>
+                )}
+
+                {amPrivileged && (
+                  <button disabled={true /*!isReady*/} onClick={handleStart}>
+                    Start
+                  </button>
+                )}
+
+                {namedUsers.map((user) => (
+                  <Player
+                    key={user.id}
+                    user={user}
+                    self={user.id === myUser.id}
+                    amPrivileged={amPrivileged}
+                    handlePermissionClick={() => togglePermission(user)}
+                  />
+                ))}
+
                 {anonUsersLen > 0 && (
-                  <>
-                    <p>
-                      {namedUsers.length > 0 && "and "} {anonUsersLen}{" "}
-                      <i>Anonymous</i>
-                      {anonUsersLen > 1 ? " courtiers" : " courtier"}
-                      {amAnon && (
-                        <span> ({anonUsersLen > 1 && "including "}me)</span>
-                      )}
-                    </p>
-                  </>
+                  <p>
+                    {namedUsers.length > 0 && "and "} {anonUsersLen}
+                    <i> Anonymous</i>
+                    {anonUsersLen > 1 ? " courtiers" : " courtier"}
+                    {amAnon && (
+                      <span> ({anonUsersLen > 1 && "including "}me)</span>
+                    )}
+                  </p>
                 )}
               </div>
             </>
@@ -197,9 +209,15 @@ export default () => {
       </FullScreenLayout>
 
       <Diagnostics>
+        <p>
+          ID:{" "}
+          <small>
+            <code>{myID}</code>
+          </small>
+        </p>
         <p>Connected: {String(amConnected)}</p>
-        <p>User Index: {myIndex}</p>
-        <p>Game privileges: {String(privileged)}</p>
+        <p>Privileges: {String(amPrivileged)}</p>
+        <p>Permitted: {String(amPermitted)}</p>
       </Diagnostics>
     </>
   );
@@ -208,17 +226,30 @@ export default () => {
 type PlayerProps = {|
   +user: User,
   +self: boolean,
+  +amPrivileged: boolean,
+  +handlePermissionClick: () => mixed,
 |};
 
-const Player = ({user: {name}, self}: PlayerProps) => {
+const Player = ({
+  user: {name, permitted},
+  self,
+  amPrivileged,
+  handlePermissionClick,
+}: PlayerProps) => {
   // const character = player?.character;
 
   return (
-    <p>
-      {name ?? <i>Unnamed</i>} {self && "(me)"}
-      {/* , character ? charText(character) : ""].join(" ") */}
-      {/* character?.side === "evil" && <span>: EVIL!</span>} */}
-      {/* {isLeader && <strong>Leader</strong>} */}
-    </p>
+    <div style={{display: "flex"}}>
+      <button disabled={!amPrivileged || self} onClick={handlePermissionClick}>
+        {permitted ? "✔" : "❌"}
+      </button>
+
+      <p>
+        {name} {self && "(me)"}
+        {/* , character ? charText(character) : ""].join(" ") */}
+        {/* character?.side === "evil" && <span>: EVIL!</span>} */}
+        {/* {isLeader && <strong>Leader</strong>} */}
+      </p>
+    </div>
   );
 };

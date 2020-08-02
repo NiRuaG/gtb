@@ -1,6 +1,6 @@
-const MAX_NAME_LENGTH = 20;
+const MAX_NAME_LENGTH = 12;
 
-const noWS = require("./removeWhitespace");
+const lettersOnly = require("./lettersOnly");
 const maxLength = require("./maxLength")(MAX_NAME_LENGTH);
 
-module.exports = (str) => maxLength(noWS(str));
+module.exports = (str) => maxLength(lettersOnly(str));

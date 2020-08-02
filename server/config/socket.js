@@ -5,9 +5,10 @@ const sanitizedName = require("./../../client/src/common/sanitizedName");
 
 // const game = new Game();
 
-const users = [];
+const usersByID = new Map();
 const userNames = new Set();
-const privilegedUsers = new Set();
+const privilegedUserIDs = new Set();
+const permittedUserIDs = new Set();
 
 module.exports = (server) => {
   // const emitReady = () => {
@@ -15,13 +16,17 @@ module.exports = (server) => {
   // };
 
   const emitUsers = () => {
-    const usersEmission = users.map((user, idx) => ({
-      name: user.name,
-      privileged: privilegedUsers.has(user),
-    }));
+    const usersEmission = [...usersByID.entries()].map(
+      ([id, {name}], index) => ({
+        id,
+        name,
+        privileged: privilegedUserIDs.has(id),
+        permitted: permittedUserIDs.has(id),
+      }),
+    );
 
-    users.forEach(({connection}, index) => {
-      connection.emit("users", usersEmission, index);
+    usersByID.forEach(({connection}, id) => {
+      connection.emit("users", usersEmission, id);
     });
   };
 
@@ -42,12 +47,12 @@ module.exports = (server) => {
     // return;
     // }
 
-    let thisUser = {
+    usersByID.set(clientSocket.id, {
+      id: clientSocket.id,
       connection: clientSocket,
-    };
-    users.push(thisUser);
+    });
 
-    thisUser.connection.emit("connected", true);
+    clientSocket.emit("connected", true);
     emitUsers();
     // emitReady();
 
@@ -55,19 +60,34 @@ module.exports = (server) => {
     clientSocket.on("disconnect", () => {
       console.log("disconnect!", clientSocket.id);
 
-      const idx = users.findIndex(
-        ({connection}) => connection === clientSocket,
-      );
-      if (idx >= 0) users.splice(idx, 1);
+      // cleanup
+      const {id} = clientSocket;
+
+      if (!usersByID.has(id)) return;
+      const {name} = usersByID.get(id);
+
+      // cleanup usersByID
+      usersByID.delete(id);
+
+      // cleanup privileges
+      privilegedUserIDs.delete(id);
+      // TODO: hide impl detail
+      if (privilegedUserIDs.size === 0) {
+        const firstNamedUser = [...usersByID.values()].find(({name}) =>
+          Boolean(name),
+        );
+        if (firstNamedUser != null) {
+          privilegedUserIDs.add(firstNamedUser.id);
+        }
+      }
+
+      // cleanup names
+      if (name != null) {
+        userNames.delete(name.toLowerCase());
+      }
 
       emitUsers();
       // emitReady();
-
-      if (thisUser == null) return;
-      if (thisUser.name != null) {
-        userNames.delete(thisUser.name.toLowerCase());
-      }
-      thisUser = null;
     });
 
     //! not sure under what conditions this fires
@@ -77,41 +97,86 @@ module.exports = (server) => {
 
     // incoming messages
     clientSocket.on("name", (name) => {
-      if (thisUser == null) return;
-
       name = sanitizedName(name);
+
       if (!name) {
-        //TODO: emit error or something // blank name
+        //TODO: emit error, nack, or something // blank name
         return;
       }
 
       const nameLC = name.toLowerCase();
       if (userNames.has(nameLC)) {
-        //TODO: clientSocket.emit("errorOrSomeSort") // name already taken
+        //TODO: error, nack, something // name already taken
         return;
       }
       userNames.add(nameLC);
 
-      thisUser.name = name;
+      const prevName = usersByID.get(clientSocket.id).name;
+      if (prevName == undefined) {
+        permittedUserIDs.add(clientSocket.id);
+      }
+      usersByID.get(clientSocket.id).name = name;
+
+      // extract to something like updatePrivileges(),
+      // to hide this implementation detail
+      //? or have it triggered when emitting users?
+      if (userNames.size === 1) {
+        privilegedUserIDs.add(clientSocket.id);
+      }
+
+      emitUsers();
+    });
+
+    clientSocket.on("permit", (idToPermit, toBePermitted) => {
+      (() => {
+        if (!privilegedUserIDs.has(clientSocket.id)) {
+          console.log("! unprivileged user trying to permit user");
+          return;
+        }
+
+        console.log("privileged user setting permit for other user", {
+          idToPermit,
+          toBePermitted,
+        });
+
+        if (usersByID.get(idToPermit) == null) {
+          console.log("user with idToPermit not found");
+          return;
+        }
+
+        if (!toBePermitted) {
+          //TODO: reconsider this flow - maybe the (current impl. is one and only)
+          // privileged user doesn't want to play,
+          // but at this point no plan for spectating
+          //? special case if it's thisUser?
+          if (privilegedUserIDs.has(idToPermit)) {
+            console.log("! trying to prevent another privileged user");
+            return;
+          }
+          permittedUserIDs.delete(idToPermit);
+        } else {
+          permittedUserIDs.add(idToPermit);
+        }
+      })();
+
       emitUsers();
     });
 
     clientSocket.on("start", () => {
-      const privilegedUser = users[0];
-      if (thisUser !== privilegedUser) {
-        console.log("! unprivileged player trying to start game");
+      if (!privilegedUserIDs.has(clientSocket.id)) {
+        console.log("! unprivileged user trying to start game");
         return emitUsers();
       }
 
-      console.log("privileged player starting game");
+      console.log("privileged user starting game");
 
       // if (!game.isReady(users)) {
       //   console.log("but game not ready");
       //   return emitReady();
       // }
 
-      game.start(users.map(({player}) => player));
-      return emitGame();
+      // game.start(users.map(({player}) => player));
+      // return emitGame();
     });
   });
 };
