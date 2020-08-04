@@ -86,8 +86,8 @@ export default () => {
   const [amConnected, setAmConnected] = useState(false);
   const [users, setUsers] = useState<Users>([]);
   const [myID, setMyID] = useState<$Nullable<ID>>(null);
-  const [formName, setFormName] = useState<$Nullable<Name>>(null);
-  // const [isReady, setIsReady] = useState(false);
+  const [formName, setFormName] = useState<Name>("");
+  const [isReady, setIsReady] = useState(false);
   // const [publicInfo, setPublicInfo] = useState<$Nullable<PubInfo>>(null);
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export default () => {
       setUsers(users);
       setMyID(ID);
     });
-    // socket.on("ready", setIsReady);
+    socket.on("ready", setIsReady);
     // socket.on("public", setPublicInfo);
 
     return () => {
@@ -148,7 +148,7 @@ export default () => {
                   type="text"
                   placeholder="Name"
                   autoFocus
-                  value={formName ?? ""}
+                  value={formName}
                   onChange={handleNameChange}
                 />
               </form>
@@ -166,7 +166,7 @@ export default () => {
                 )}
 
                 {amPrivileged && (
-                  <button disabled={true /*!isReady*/} onClick={handleStart}>
+                  <button disabled={!isReady} onClick={handleStart}>
                     Start
                   </button>
                 )}

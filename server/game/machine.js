@@ -1,10 +1,10 @@
 const {Machine, interpret, assign} = require("xstate");
-const {MIN_PLAYERS, MAX_PLAYERS} = require("../../client/src/common/constants");
+const {canStart} = require("./config");
 const shuffle = require("../../client/src/common/shuffle");
 
 //! quirky shorthand
 // if given teamSize is negative, quest needs 2 failures
-// instead of 1 failure default
+// instead of default 1 failure
 const Quest = (teamSize) => ({
   teamSize: Math.abs(teamSize),
   failsReq: teamSize < 0 ? 2 : 1,
@@ -37,110 +37,111 @@ const log = (msg) => (context, event) => {
 };
 
 const initPlayers = (_, {players}) => players;
-const initQuests = (_, {players: {length}}) => {
-  const {quests} = CONFIG[length];
-};
+const initQuests = (_, {players: {length}}) => CONFIG[length].quests;
 
 const initContext = assign({
   players: initPlayers,
   leader_i: 0,
   nominees: [],
-  quests: (_, {players: {length}}) => [],
+  quests: initQuests,
   currentQuest_i: 0,
   votes: [],
 });
 
-const gameMachine = Machine({
-  id: "game",
+const gameMachine = Machine(
+  {
+    id: "game",
 
-  context: {
-    players: [],
-    leader_i: null,
-    nominees: [],
-    quests: [],
-    currentQuest_i: null,
-    votes: [],
-  },
+    context: {
+      players: [],
+      leader_i: null,
+      nominees: [],
+      quests: [],
+      currentQuest_i: null,
+      votes: [],
+    },
 
-  initial: "idle",
+    initial: "idle",
 
-  states: {
-    idle: {
-      on: {
-        START: {
-          target: "propose",
-          actions: initContext,
+    states: {
+      idle: {
+        on: {
+          START: {
+            target: "propose",
+            actions: initContext,
+            cond: "canStart",
+          },
+        },
+        // exit: log("exit from idle"),
+      },
+
+      propose: {
+        entry: log("entered propose"),
+        on: {
+          NOMINATE: "castVotes",
         },
       },
-      // exit: log("exit from idle"),
-    },
 
-    propose: {
-      entry: log("entered propose"),
-      on: {
-        NOMINATE: "castVotes",
+      castVotes: {
+        on: {
+          APPROVE: "embark",
+          REJECT: "checkRejEOG",
+        },
       },
-    },
 
-    castVotes: {
-      on: {
-        APPROVE: "embark",
-        REJECT: "checkRejEOG",
+      checkRejEOG: {
+        on: {
+          TRIGGER: "evilWins",
+          NEXT: "propose",
+        },
       },
-    },
 
-    checkRejEOG: {
-      on: {
-        TRIGGER: "evilWins",
-        NEXT: "propose",
+      embark: {
+        on: {
+          SUCCESS: "checkSuccEOG",
+          FAILURE: "checkFailEOG",
+        },
       },
-    },
 
-    embark: {
-      on: {
-        SUCCESS: "checkSuccEOG",
-        FAILURE: "checkFailEOG",
+      checkSuccEOG: {
+        on: {
+          TRIGGER: "assassinate",
+          NEXT: "propose",
+        },
       },
-    },
 
-    checkSuccEOG: {
-      on: {
-        TRIGGER: "assassinate",
-        NEXT: "propose",
+      checkFailEOG: {
+        on: {
+          TRIGGER: "evilWins",
+          NEXT: "propose",
+        },
       },
-    },
 
-    checkFailEOG: {
-      on: {
-        TRIGGER: "evilWins",
-        NEXT: "propose",
+      assassinate: {
+        on: {
+          hit: "evilWins",
+          miss: "goodWins",
+        },
       },
-    },
 
-    assassinate: {
-      on: {
-        hit: "evilWins",
-        miss: "goodWins",
+      evilWins: {
+        type: "final",
       },
-    },
 
-    evilWins: {
-      type: "final",
-    },
-
-    goodWins: {
-      type: "final",
+      goodWins: {
+        type: "final",
+      },
     },
   },
-});
+  {
+    guards: {
+      canStart: (_, {players}) => players != null && canStart(players),
+    },
+  },
+);
 
 class Game {
   constructor() {}
-
-  // ? and game hasn't started already?
-  isReady({length}) {
-    return length >= MIN_PLAYERS && length <= MAX_PLAYERS;
-  }
 
   start(state, {length}) {
     if (state.description !== "waiting to start") return state;

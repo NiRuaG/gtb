@@ -1,8 +1,7 @@
-const {
-  MIN_PLAYERS,
-  MAX_PLAYERS,
-} = require("./../../client/src/common/constants");
+const {canStart} = require("./config");
+const gameService = require("./machine");
 const shuffle = require("./../../client/src/common/shuffle");
+const {interpret} = require("xstate");
 
 const log = (msg, ...rest) => console.log(`Game\t${msg}`, ...rest);
 
@@ -36,32 +35,47 @@ const configFor = ({length}) => {
 const knowsOfEvil = ({character}) =>
   character.side === "evil" || character.title === "Merlin";
 
-class Game {
+class GameServer {
   constructor() {
     log("constructed");
-    this.players = [];
+    this.service = gameService;
     this.publicKnowledge = {};
-    this.config = {};
-    // this.privateKnowledge = [];
+    this.privateKnowledge = [];
+
+    this.service.onTransition((state) => {
+      log("onTrans state", state, state.changed);
+      this.lastStateChanged = state.changed;
+    });
+
+    this.service.start();
   }
 
-  // ? and game hasn't started already?
-  isReady({length}) {
-    return length >= MIN_PLAYERS && length <= MAX_PLAYERS;
+  hasStarted() {
+    return this.service.state.value != "idle";
   }
 
-  start(players_) {
-    log("starting with players", players_);
+  canStart = canStart;
 
-    this.players = players_;
-    const {players} = this;
+  start(server, players) {
+    log("starting server with", server, "and players", players);
 
-    const config = configFor(players);
+    this.service.send("START", {players});
+    if (this.lastStateChanged) {
+      return false;
+    }
 
-    this.publicKnowledge.quests = config.quests;
+    //? this.service.onDone(() => return true);
+    //? this.service.onChange() context changes!?
+
+    // this.players = players_;
+    // const {players} = this;
+
+    // const config = configFor(players);
+
+    // this.publicKnowledge.quests = config.quests;
     // this.assignCharacters(config);
-    this.assignRandomLeader();
-    this.assignKnowledge();
+    // this.assignRandomLeader();
+    // this.assignKnowledge();
   }
 
   assignCharacters({good, evil}) {
@@ -122,4 +136,4 @@ class Game {
   }
 }
 
-module.exports = Game;
+module.exports = GameServer;

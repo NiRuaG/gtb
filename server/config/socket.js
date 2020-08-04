@@ -1,39 +1,30 @@
-const Game = require("./../game");
-
+const GameServer = require("./../game");
 const sanitizedName = require("./../../client/src/common/sanitizedName");
-// const {MAX_PLAYERS} = require("./../../client/src/common/constants");
-
-// const game = new Game();
 
 const usersByID = new Map();
 const userNames = new Set();
 const privilegedUserIDs = new Set();
 const permittedUserIDs = new Set();
 
+const emitUsers = () => {
+  const usersEmission = [...usersByID.values()].map(({id, name}) => ({
+    id,
+    name,
+    privileged: privilegedUserIDs.has(id),
+    permitted: permittedUserIDs.has(id),
+  }));
+
+  usersByID.forEach(({connection}, id) => {
+    connection.emit("users", usersEmission, id);
+  });
+};
+
+const gameServer = new GameServer();
+const checkIfGameReady = () => gameServer.canStart(permittedUserIDs);
+
 module.exports = (server) => {
-  // const emitReady = () => {
-  //   server.emit("ready", game.isReady(users));
-  // };
-
-  const emitUsers = () => {
-    const usersEmission = [...usersByID.entries()].map(
-      ([id, {name}], index) => ({
-        id,
-        name,
-        privileged: privilegedUserIDs.has(id),
-        permitted: permittedUserIDs.has(id),
-      }),
-    );
-
-    usersByID.forEach(({connection}, id) => {
-      connection.emit("users", usersEmission, id);
-    });
-  };
-
-  const emitGame = () => {
-    console.log(game.publicKnowledge);
-    server.emit("public", game.publicKnowledge);
-    //? probably also include emitUsers with their characters
+  const emitReady = () => {
+    server.emit("ready", checkIfGameReady());
   };
 
   server.on("connection", (clientSocket) => {
@@ -54,7 +45,6 @@ module.exports = (server) => {
 
     clientSocket.emit("connected", true);
     emitUsers();
-    // emitReady();
 
     //* Handlers
     clientSocket.on("disconnect", () => {
@@ -68,7 +58,7 @@ module.exports = (server) => {
 
       // cleanup usersByID
       usersByID.delete(id);
-
+      permittedUserIDs.delete(id);
       // cleanup privileges
       privilegedUserIDs.delete(id);
       // TODO: hide impl detail
@@ -87,7 +77,7 @@ module.exports = (server) => {
       }
 
       emitUsers();
-      // emitReady();
+      emitReady();
     });
 
     //! not sure under what conditions this fires
@@ -125,6 +115,7 @@ module.exports = (server) => {
       }
 
       emitUsers();
+      emitReady(); // tie this fn with any change to permittedUsers
     });
 
     clientSocket.on("permit", (idToPermit, toBePermitted) => {
@@ -160,6 +151,7 @@ module.exports = (server) => {
       })();
 
       emitUsers();
+      emitReady();
     });
 
     clientSocket.on("start", () => {
@@ -170,13 +162,20 @@ module.exports = (server) => {
 
       console.log("privileged user starting game");
 
-      // if (!game.isReady(users)) {
-      //   console.log("but game not ready");
-      //   return emitReady();
-      // }
+      if (!checkIfGameReady()) {
+        console.log("but game not ready");
+        return emitReady();
+      }
 
-      // game.start(users.map(({player}) => player));
-      // return emitGame();
+      const didStart = gameServer.start(
+        server,
+        [...permittedUserIDs].map((id) => usersByID.get(id)),
+      );
+
+      if (!didStart) {
+        emitUsers();
+        emitReady();
+      }
     });
   });
 };
