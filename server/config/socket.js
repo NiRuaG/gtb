@@ -19,10 +19,10 @@ const emitUsers = () => {
   });
 };
 
-const gameServer = new GameServer();
-const checkIfGameReady = () => gameServer.canStart(permittedUserIDs);
-
 module.exports = (server) => {
+  let gameServer = new GameServer(server);
+  const checkIfGameReady = () => gameServer.canStart(permittedUserIDs);
+
   const emitReady = () => {
     server.emit("ready", checkIfGameReady());
   };
@@ -43,11 +43,37 @@ module.exports = (server) => {
       connection: clientSocket,
     });
 
+    //! v devonly v
+    {
+      const name = clientSocket.id.slice(0, 4).toLowerCase();
+      userNames.add(name);
+      permittedUserIDs.add(clientSocket.id);
+      usersByID.get(clientSocket.id).name = name;
+
+      // extract to something like updatePrivileges(),
+      // to hide this implementation detail
+      //? or have it triggered when emitting users?
+      if (userNames.size === 1) {
+        privilegedUserIDs.add(clientSocket.id);
+      }
+
+      emitUsers();
+      emitReady(); // tie this fn with any change to permittedUsers
+    }
+    //! ^ devonly ^
+
     clientSocket.emit("connected", true);
     emitUsers();
 
     //* Handlers
     clientSocket.on("disconnect", () => {
+      //! for dev, needs fix
+      if (gameServer.hasStarted()) {
+        gameServer.service.stop();
+        gameServer = new GameServer(server);
+        //! after dev, make gameServer const
+      }
+
       console.log("disconnect!", clientSocket.id);
 
       // cleanup
@@ -125,28 +151,40 @@ module.exports = (server) => {
           return;
         }
 
-        console.log("privileged user setting permit for other user", {
-          idToPermit,
-          toBePermitted,
-        });
+        console.log(
+          `privileged user ${clientSocket.id} setting permit for other user`,
+          {
+            idToPermit,
+            toBePermitted,
+          },
+        );
+
+        if (gameServer.hasStarted()) {
+          console.log("but game has started, aborting");
+          return;
+        }
 
         if (usersByID.get(idToPermit) == null) {
-          console.log("user with idToPermit not found");
+          console.log(`user with idToPermit (${idToPermit}) not found`);
           return;
         }
 
         if (!toBePermitted) {
-          //TODO: reconsider this flow - maybe the (current impl. is one and only)
-          // privileged user doesn't want to play,
-          // but at this point no plan for spectating
+          //TODO: reconsider this flow - maybe the (current impl. as one and only)
+          // privileged user doesn't want to play.
+          // however at this point no plan for spectating
           //? special case if it's thisUser?
           if (privilegedUserIDs.has(idToPermit)) {
-            console.log("! trying to prevent another privileged user");
+            console.log(
+              "! trying to prevent another privileged user, aborting",
+            );
             return;
           }
           permittedUserIDs.delete(idToPermit);
+          console.log("permitted user removed", idToPermit);
         } else {
           permittedUserIDs.add(idToPermit);
+          console.log("permitted user added", idToPermit);
         }
       })();
 
@@ -163,18 +201,23 @@ module.exports = (server) => {
       console.log("privileged user starting game");
 
       if (!checkIfGameReady()) {
-        console.log("but game not ready");
+        console.log("but game not ready, aborting");
         return emitReady();
       }
 
+      if (gameServer.hasStarted()) {
+        console.log("but game already started, aborting");
+        return server.emit("gameState", gameServer.currentState);
+      }
+
       const didStart = gameServer.start(
-        server,
         [...permittedUserIDs].map((id) => usersByID.get(id)),
       );
 
       if (!didStart) {
         emitUsers();
         emitReady();
+        return;
       }
     });
   });

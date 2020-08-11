@@ -11,37 +11,58 @@ const Quest = (teamSize) => ({
 });
 
 const CONFIG = {
-  5: {evil: 2, quests: [2, 3, 2, 3, 3].map(Quest)},
-  6: {evil: 2, quests: [2, 3, 4, 3, 4].map(Quest)},
-  7: {evil: 3, quests: [2, 3, 3, -4, 4].map(Quest)},
-  8: {evil: 3, quests: [3, 4, 4, -5, 5].map(Quest)},
-  9: {evil: 3, quests: [3, 4, 4, -5, 5].map(Quest)},
-  10: {evil: 4, quests: [3, 4, 4, -5, 5].map(Quest)},
-};
-
-const configFor = (length) => {
-  const config = CONFIG[length];
-  if (!config) return;
-
-  return {
-    ...config,
-    good: length - config.evil,
-  };
+  5: {good: 3, evil: 2, quests: [2, 3, 2, 3, 3].map(Quest)},
+  6: {good: 4, evil: 2, quests: [2, 3, 4, 3, 4].map(Quest)},
+  7: {good: 4, evil: 3, quests: [2, 3, 3, -4, 4].map(Quest)},
+  8: {good: 5, evil: 3, quests: [3, 4, 4, -5, 5].map(Quest)},
+  9: {good: 6, evil: 3, quests: [3, 4, 4, -5, 5].map(Quest)},
+  10: {good: 6, evil: 4, quests: [3, 4, 4, -5, 5].map(Quest)},
 };
 
 const knowsOfEvil = ({character}) =>
   character.side === "evil" || character.title === "Merlin";
 
-const log = (msg) => (context, event) => {
+const logEvent = (msg) => (context, event) => {
   console.log(msg, {context, event});
 };
 
-const initPlayers = (_, {players}) => players;
+const initPlayers = (_, {players: {length}}) => {
+  const {good, evil} = CONFIG[length];
+
+  const characters = [
+    ...Array.from({length: good - 1}, (_) => ({
+      side: "good",
+      description: "Loyal Servant of Arthur",
+    })),
+    {
+      side: "good",
+      description: "Knows evil, must remain hidden",
+      title: "Merlin",
+    },
+    ...Array.from({length: evil - 1}, (_) => ({
+      side: "evil",
+      description: "Minion of Mordred",
+    })),
+    {
+      side: "evil",
+      description: "Minion of Mordred",
+      title: "Assassin",
+    },
+  ];
+
+  shuffle(characters);
+  return characters.map((character) => ({
+    character,
+  }));
+};
+
 const initQuests = (_, {players: {length}}) => CONFIG[length].quests;
+const initLeaderIdx = (_, {players: {length}}) =>
+  Math.floor(Math.random() * length);
 
 const initContext = assign({
   players: initPlayers,
-  leader_i: 0,
+  leader_i: initLeaderIdx,
   nominees: [],
   quests: initQuests,
   currentQuest_i: 0,
@@ -56,7 +77,7 @@ const gameMachine = Machine(
       players: [],
       leader_i: null,
       nominees: [],
-      quests: [],
+      quests: null,
       currentQuest_i: null,
       votes: [],
     },
@@ -76,7 +97,7 @@ const gameMachine = Machine(
       },
 
       propose: {
-        entry: log("entered propose"),
+        // entry: log("entered propose"),
         on: {
           NOMINATE: "castVotes",
         },
@@ -139,84 +160,5 @@ const gameMachine = Machine(
     },
   },
 );
-
-class Game {
-  constructor() {}
-
-  start(state, {length}) {
-    if (state.description !== "waiting to start") return state;
-
-    log("starting with player length", length);
-    const players = Array.from({length}, (_) => {
-      __this: "is a player object";
-    });
-    const {quests} = configFor(length);
-
-    return {
-      ...state,
-      description: "waiting for nominations",
-      players,
-      quests,
-      currentQuest: quests[0],
-    };
-  }
-
-  assignCharacters({good, evil}) {
-    const characters = [
-      ...Array.from({length: good - 1}, (_) => ({
-        side: "good",
-        description: "Loyal Servant of Arthur",
-      })),
-      {
-        side: "good",
-        description: "Knows evil, must remain hidden",
-        title: "Merlin",
-      },
-      ...Array.from({length: evil - 1}, (_) => ({
-        side: "evil",
-        description: "Minion of Mordred",
-      })),
-      {
-        side: "evil",
-        description: "Minion of Mordred",
-        title: "Assassin",
-      },
-    ];
-
-    shuffle(characters);
-    this.players.forEach((player, i) => {
-      player.character = character[i];
-    });
-  }
-
-  assignRandomLeader() {
-    const {players, publicKnowledge} = this;
-    const randomIdx = Math.floor(Math.random() * players.length);
-    players.forEach((p) => (p.isLeader = i === randomIdx));
-  }
-
-  assignKnowledge() {
-    const {players} = this;
-
-    players.forEach((player, i) => {
-      const knowledge = players.map(({character, isLeader}, j) => {
-        const common = {isLeader};
-
-        if (i === j) {
-          return {...common, character};
-        }
-        if (knowsOfEvil(player)) {
-          return {...common, character: {side: character.side}};
-        }
-        return common;
-      });
-
-      player.knowledge = {
-        ...this.publicKnowledge,
-        ...knowledge,
-      };
-    });
-  }
-}
 
 module.exports = interpret(gameMachine);

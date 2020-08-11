@@ -3,48 +3,69 @@ const gameService = require("./machine");
 const shuffle = require("./../../client/src/common/shuffle");
 const {interpret} = require("xstate");
 
-const log = (msg, ...rest) => console.log(`Game\t${msg}`, ...rest);
-
-//! quirky shorthand
-// if given teamSize is negative, quest needs 2 failures
-// instead of 1 failure default
-const Quest = (teamSize) => ({
-  teamSize: Math.abs(teamSize),
-  failsReq: teamSize < 0 ? 2 : 1,
-});
-
-const CONFIG = {
-  5: {evil: 2, quests: [2, 3, 2, 3, 3].map(Quest)},
-  6: {evil: 2, quests: [2, 3, 4, 3, 4].map(Quest)},
-  7: {evil: 3, quests: [2, 3, 3, -4, 4].map(Quest)},
-  8: {evil: 3, quests: [3, 4, 4, -5, 5].map(Quest)},
-  9: {evil: 3, quests: [3, 4, 4, -5, 5].map(Quest)},
-  10: {evil: 4, quests: [3, 4, 4, -5, 5].map(Quest)},
-};
-
-const configFor = ({length}) => {
-  const config = CONFIG[length];
-  if (!config) return;
-
-  return {
-    ...config,
-    good: length - config.evil,
-  };
-};
+const log = (msg, ...rest) => console.log(`Game Server > ${msg}`, ...rest);
 
 const knowsOfEvil = ({character}) =>
   character.side === "evil" || character.title === "Merlin";
 
-class GameServer {
-  constructor() {
-    log("constructed");
-    this.service = gameService;
-    this.publicKnowledge = {};
-    this.privateKnowledge = [];
+const AN_EVIL_CHARACTER_PLAYER = {
+  character: {side: "evil"},
+};
 
-    this.service.onTransition((state) => {
-      log("onTrans state", state, state.changed);
-      this.lastStateChanged = state.changed;
+class GameServer {
+  constructor(server) {
+    log("constructing game with server", server);
+    this.server = server;
+    this.service = gameService;
+    // this.publicKnowledge = {};
+    // this.privateKnowledge = [];
+
+    this.service.onTransition(({value, changed}) => {
+      log("onTransition > ", "value:", value, ", changed:", changed);
+      this.lastStateChanged = changed;
+      this.currentState = value;
+      log("emitting state as", value);
+      server.emit("gameState", value);
+    });
+
+    // Context change listener
+    this.service.onChange((newContext, prevContext) => {
+      log(
+        "onChange > ",
+        "new context",
+        newContext,
+        "prev. context",
+        prevContext,
+      );
+
+      const {players, quests, currentQuest_i, leader_i} = newContext;
+      //? this only needs to be done once
+      // possibly its own emit specific to characters
+      const evilPlayers = players.reduce(
+        (evils, {character}, index) =>
+          character.side === "evil"
+            ? {
+                ...evils,
+                [this.usersByPlayerIdx.get(index).id]: AN_EVIL_CHARACTER_PLAYER,
+              }
+            : evils,
+        {},
+      );
+
+      players.forEach((player, idx) => {
+        const user = this.usersByPlayerIdx.get(idx);
+
+        user.connection.emit(
+          "players",
+          {
+            ...(knowsOfEvil(player) ? evilPlayers : {}),
+            [user.id]: player,
+          },
+          leader_i,
+        );
+      });
+
+      server.emit("quests", quests, currentQuest_i);
     });
 
     this.service.start();
@@ -56,21 +77,22 @@ class GameServer {
 
   canStart = canStart;
 
-  start(server, players) {
-    log("starting server with", server, "and players", players);
+  start(users) {
+    log("starting game server with users", {users});
+    this.playerIdxByUserId = new Map(users.map(({id}, idx) => [id, idx]));
+    this.usersByPlayerIdx = new Map(users.map((user, idx) => [idx, user]));
 
-    this.service.send("START", {players});
+    this.service.send("START", {players: {length: users.length}});
     if (this.lastStateChanged) {
       return false;
     }
 
+    // TODO: incoming msg handlers
+    // users.forEach(user => {
+    // user.connection.on("");
+    // })
+
     //? this.service.onDone(() => return true);
-    //? this.service.onChange() context changes!?
-
-    // this.players = players_;
-    // const {players} = this;
-
-    // const config = configFor(players);
 
     // this.publicKnowledge.quests = config.quests;
     // this.assignCharacters(config);
@@ -78,61 +100,10 @@ class GameServer {
     // this.assignKnowledge();
   }
 
-  assignCharacters({good, evil}) {
-    const characters = [
-      ...Array.from({length: good - 1}, (_) => ({
-        side: "good",
-        description: "Loyal Servant of Arthur",
-      })),
-      {
-        side: "good",
-        description: "Knows evil, must remain hidden",
-        title: "Merlin",
-      },
-      ...Array.from({length: evil - 1}, (_) => ({
-        side: "evil",
-        description: "Minion of Mordred",
-      })),
-      {
-        side: "evil",
-        description: "Minion of Mordred",
-        title: "Assassin",
-      },
-    ];
-
-    shuffle(characters);
-    this.players.forEach((player, i) => {
-      player.character = character[i];
-    });
-  }
-
   assignRandomLeader() {
     const {players, publicKnowledge} = this;
     const randomIdx = Math.floor(Math.random() * players.length);
     players.forEach((p) => (p.isLeader = i === randomIdx));
-  }
-
-  assignKnowledge() {
-    const {players} = this;
-
-    players.forEach((player, i) => {
-      const knowledge = players.map(({character, isLeader}, j) => {
-        const common = {isLeader};
-
-        if (i === j) {
-          return {...common, character};
-        }
-        if (knowsOfEvil(player)) {
-          return {...common, character: {side: character.side}};
-        }
-        return common;
-      });
-
-      player.knowledge = {
-        ...this.publicKnowledge,
-        ...knowledge,
-      };
-    });
   }
 }
 
