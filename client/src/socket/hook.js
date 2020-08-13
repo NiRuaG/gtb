@@ -1,11 +1,13 @@
 // @flow
 
 import {useEffect, useRef, useState} from "react";
-import openSocket from "socket.io-client";
+import openSocket, {type Socket} from "socket.io-client";
 
 import type {UserT, Users} from "User";
 import type {PlayerT} from "Player";
 import type {Quests} from "Quest";
+
+export type {Socket} from "socket.io-client";
 
 type UserID = $PropertyType<UserT, "id">;
 export type PlayersMap = {|
@@ -13,7 +15,7 @@ export type PlayersMap = {|
 |};
 
 export default () => {
-  const socketRef = useRef(null);
+  const socketRef = useRef<?Socket>(null);
 
   const [amConnected, setAmConnected] = useState(false);
   const [users, setUsers] = useState<Users>([]);
@@ -21,9 +23,9 @@ export default () => {
   const [isReady, setIsReady] = useState(false);
   const [playersByID, setPlayersByID] = useState<?PlayersMap>(null);
   const [leaderIdx, setLeaderIdx] = useState<?number>(null);
-  const [gameState, setGameState] = useState("idle");
+  const [gameState, setGameState] = useState("idle"); // ? common piece of const data
   const [quests, setQuests] = useState<?Quests>(null);
-  const [currQuestIdx, setCurrQuestIdx] = useState<?number>(null);
+  const [currentQuestIdx, setCurrentQuestIdx] = useState<?number>(null);
 
   useEffect(() => {
     const socket = openSocket("/");
@@ -44,7 +46,7 @@ export default () => {
     socket.on<string, void>("gameState", setGameState);
     socket.on<Quests, number, void>("quests", (quests, idx) => {
       setQuests(quests);
-      setCurrQuestIdx(idx);
+      setCurrentQuestIdx(idx);
     });
 
     return () => {
@@ -62,6 +64,6 @@ export default () => {
     leaderIdx,
     gameState,
     quests,
-    currQuestIdx,
+    currentQuestIdx,
   };
 };

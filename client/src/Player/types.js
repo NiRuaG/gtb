@@ -1,6 +1,6 @@
 // @flow
 
-type Side = "good" | "evil";
+import type {Side} from "Side";
 
 type Character = {|
   +side: Side,
