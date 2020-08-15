@@ -28,12 +28,7 @@ export default ({
   const character = player?.character;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-      }}
-    >
+    <>
       <div style={{display: "flex"}}>
         <button
           // ? could make this based on content by displaying all content overlapped, with visibility none toggling
@@ -44,12 +39,13 @@ export default ({
           {permitted ? "✔" : "❌"}
         </button>
       </div>
+
       <div style={{marginLeft: "1rem"}}>
         <p>
           {name}
           {self && " (me)"}
         </p>
-        <p>
+        <p style={{visibility: character?.side ? "visible" : "hidden"}}>
           {self && character
             ? charText(character)
             : character?.side === "evil" && <span>EVIL!</span>}
@@ -57,6 +53,6 @@ export default ({
           {/* {isLeader && <strong>Leader</strong>} */}
         </p>
       </div>
-    </div>
+    </>
   );
 };

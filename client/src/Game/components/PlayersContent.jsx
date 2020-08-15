@@ -28,9 +28,18 @@ export default ({
 }: Props) => {
   const [formName, setFormName] = useState("");
 
+  const {privileged: amPrivileged = false} = myUser;
+  const amAnon = !myUser.name;
+  const [{length: anonUsersLen}, namedUsers] = partition<UserT>(
+    ({name}) => !name,
+  )(users);
+  const permittedUsers = users.filter(({permitted}) => permitted);
+
+  const gameHasStarted = gameState !== "idle";
+
   const handleNameSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!formName) return;
+    if (!formName || gameHasStarted) return;
     return socket?.emit("name", formName);
   };
 
@@ -43,19 +52,13 @@ export default ({
   const togglePermission = ({id, permitted}) =>
     amPrivileged && socket.emit("permit", id, !permitted);
 
-  const {privileged: amPrivileged = false} = myUser;
-  const amAnon = !myUser.name;
-  const [{length: anonUsersLen}, namedUsers] = partition<UserT>(
-    ({name}) => !name,
-  )(users);
-  const permittedUsers = users.filter(({permitted}) => permitted);
-
-  const gameHasStarted = gameState !== "idle";
-
   return (
     <>
       <div style={{gridRowStart: 1, marginBottom: "0.5rem"}}>
-        <form onSubmit={handleNameSubmit}>
+        <form
+          onSubmit={handleNameSubmit}
+          style={{visibility: gameHasStarted ? "hidden" : "visible"}}
+        >
           <input
             type="text"
             placeholder="Name"
@@ -87,11 +90,15 @@ export default ({
       </div>
 
       {namedUsers.map((user, idx) => (
-        <span
+        <div
           key={user.id}
           style={{
             gridRowStart: idx + 2,
             alignSelf: "flex-start",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            borderBottom: "1px solid",
           }}
         >
           <User
@@ -102,7 +109,7 @@ export default ({
             handlePermissionClick={() => togglePermission(user)}
             gameHasStarted={gameHasStarted}
           />
-        </span>
+        </div>
       ))}
 
       {gameState === "idle" && anonUsersLen > 0 && (

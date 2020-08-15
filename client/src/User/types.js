@@ -1,9 +1,9 @@
 // @flow
 
-type ID = string;
+export type UserID = string;
 
 export type UserT = {|
-  +id: ID,
+  +id: UserID,
   +name: ?string,
   +privileged: boolean,
   +permitted: boolean,

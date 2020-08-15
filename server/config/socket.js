@@ -219,6 +219,15 @@ module.exports = (server) => {
         emitReady();
         return;
       }
+
+      console.log("successful start");
+      console.log("disconnecting non-permitted users");
+      usersByID.forEach(({connection}, id) => {
+        if (!permittedUserIDs.has(id)) {
+          connection.disconnect(true);
+        }
+      });
+      emitUsers();
     });
   });
 };

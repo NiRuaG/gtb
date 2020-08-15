@@ -16,7 +16,6 @@ export default ({isCurrQuest, quest: {teamSize, failsReq}}: Props) => (
         display: "flex",
         flexFlow: "column nowrap",
         alignItems: "center",
-        color: isCurrQuest ? "white" : "black",
       }}
     >
       <div
@@ -30,12 +29,13 @@ export default ({isCurrQuest, quest: {teamSize, failsReq}}: Props) => (
           height: "4rem",
           borderRadius: "2rem",
           border: "2px solid black",
+          color: isCurrQuest ? "white" : "black",
           background: isCurrQuest ? "black" : "white",
         }}
       >
         <span style={{fontSize: "2rem"}}>{teamSize}</span>
       </div>
-      {failsReq > 1 && <p>2 fails</p>}
+      <p style={{visibility: failsReq > 1 ? "visible" : "hidden"}}>2 fails</p>
     </div>
   </div>
 );

@@ -21,7 +21,7 @@ const MainLayout: StyledComponent<Empty, Empty, HTMLDivElement> = styled.div`
   display: grid;
   grid-template-columns: max-content [QComp] max-content [QCurr] max-content [QFut] max-content;
   grid-template-rows: max-content repeat(10, 1fr) max-content;
-  row-gap: 0.2rem;
+  /* row-gap: 0.2rem; */
 
   padding-top: 2rem;
   padding-bottom: 2rem;
@@ -76,9 +76,21 @@ export default () => {
             />
           )}
 
-          {quests && currentQuestIdx && (
-            <QuestsContent quests={quests} currentQuestIdx={currentQuestIdx} />
-          )}
+          {/* {quests && currentQuestIdx != null && ( */}
+          <QuestsContent
+            quests={[
+              {teamSize: 2, failsReq: 1},
+              {teamSize: 2, failsReq: 1},
+              {teamSize: 2, failsReq: 1},
+              {teamSize: 2, failsReq: 2},
+            ]}
+            currentQuestIdx={0}
+            playersByID={users.reduce(
+              (acc, curr) => ({...acc, [curr.id]: {}}),
+              {},
+            )}
+            leaderID={users[0].id}
+          />
         </MainLayout>
       )}
 

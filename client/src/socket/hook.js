@@ -3,13 +3,12 @@
 import {useEffect, useRef, useState} from "react";
 import openSocket, {type Socket} from "socket.io-client";
 
-import type {UserT, Users} from "User";
+import type {UserT, Users, UserID} from "User";
 import type {PlayerT} from "Player";
 import type {Quests} from "Quest";
 
 export type {Socket} from "socket.io-client";
 
-type UserID = $PropertyType<UserT, "id">;
 export type PlayersMap = {|
   [UserID]: PlayerT,
 |};
@@ -40,6 +39,7 @@ export default () => {
     });
     socket.on<boolean, void>("ready", setIsReady);
     socket.on<PlayersMap, number, void>("players", (playersMap, idx) => {
+      console.log({playersMap});
       setPlayersByID(playersMap);
       setLeaderIdx(idx);
     });
