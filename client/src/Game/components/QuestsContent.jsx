@@ -3,37 +3,39 @@
 import React from "react";
 import {splitAt} from "ramda";
 
+import type {Players} from "Player";
 import Quest, {type QuestT, type Quests} from "Quest";
 import type {UserID} from "User";
-import type {PlayersMap} from "socket/hook";
 
 type Props = {|
-  +quests: Quests,
-  +currentQuestIdx: number,
-  +playersByID: ?PlayersMap,
+  +quests: ?Quests,
+  +currentQuestIdx: ?number,
   +leaderID: UserID,
+  +players: Players,
 |};
 
-export default ({quests, currentQuestIdx, playersByID}: Props) => {
-  const [completed, [currentQuest, ...incomplete]] = splitAt<QuestT>(
-    currentQuestIdx,
-    quests,
-  );
+export default ({quests, currentQuestIdx, players}: Props) => {
+  if (quests == null || currentQuestIdx == null) return null;
+
+  const [
+    completedQuests,
+    [currentQuest, ...incompleteQuests],
+  ] = splitAt<QuestT>(currentQuestIdx, quests);
 
   return (
     <>
       <div style={{gridColumnStart: "QComp", display: "flex"}}>
-        {completed.map((quest, idx) => (
+        {completedQuests.map((quest, idx) => (
           <Quest key={`Quest-Comp-${idx}`} quest={quest} isCurrQuest={false} />
         ))}
       </div>
 
-      <CurrentQuest quest={currentQuest} playersByID={playersByID ?? {}} />
+      <CurrentQuest quest={currentQuest} players={players} />
 
       <div style={{gridRowStart: 1, gridColumnStart: "QFut", display: "flex"}}>
-        {incomplete.map((quest, idx) => (
+        {incompleteQuests.map((quest, idx) => (
           <Quest
-            key={`Quest-Incomp-${idx}`}
+            key={`Quest-Incomplete-${idx}`}
             quest={quest}
             isCurrQuest={false}
           />
@@ -45,10 +47,10 @@ export default ({quests, currentQuestIdx, playersByID}: Props) => {
 
 type CurrentQuestProps = {|
   +quest: QuestT,
-  +playersByID: PlayersMap,
+  +players: Players,
 |};
 
-const CurrentQuest = ({quest, playersByID}: CurrentQuestProps) => {
+const CurrentQuest = ({quest, players}: CurrentQuestProps) => {
   return (
     <>
       <div
@@ -89,12 +91,9 @@ const CurrentQuest = ({quest, playersByID}: CurrentQuestProps) => {
         </div>
       </div>
 
-      {Array.from(
-        {length: Object.entries(playersByID).length},
-        (_) => true,
-      ).map((_, pi) => (
+      {players.map(({user}, pi) => (
         <div
-          key={`player-${pi}-votes`}
+          key={user.id}
           style={{
             gridRowStart: pi + 2,
             gridColumnStart: 3,
@@ -104,10 +103,11 @@ const CurrentQuest = ({quest, playersByID}: CurrentQuestProps) => {
             borderBottom: "1px solid",
           }}
         >
-          {[...[true, false], ...Array(5).fill(null)]
-            .map(String)
-            .slice(0, 5)
-            .map((approved, vi) => (
+          {quest.voting?.map(({leaderID, team, votes}, vi) => {
+            const teamSet = new Set(team);
+            const approved = String(votes?.[pi] ?? null);
+
+            return (
               <div
                 key={`${pi}-voted-${vi}`}
                 style={{
@@ -123,9 +123,11 @@ const CurrentQuest = ({quest, playersByID}: CurrentQuestProps) => {
                   }[approved],
                 }}
               >
-                {`${Math.random() > 0.5 ? "L" : ""}T`}
+                {leaderID === user.id && "L"}
+                {teamSet.has(user.id) && "T"}
               </div>
-            ))}
+            );
+          })}
         </div>
       ))}
     </>

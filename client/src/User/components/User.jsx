@@ -5,54 +5,39 @@ import React from "react";
 import type {UserT} from "User";
 import type {PlayerT} from "Player";
 
-const charText = ({side, description, title}) =>
-  `${title ? `${title} - ` : ""}${description ?? ""} (${side})`;
+const charText = ({side, description, title}) => (
+  <>
+    {`(${side}) `}
+    {`${title ? `${title} - ` : ""}`}
+    <small>{description ?? ""}</small>
+  </>
+);
 
 type Props = {|
   +user: UserT,
   +self: boolean,
-  +amPrivileged: boolean,
-  +handlePermissionClick: () => mixed,
-  +player: ?PlayerT,
-  +gameHasStarted: boolean,
+  +player?: PlayerT,
 |};
 
-export default ({
-  user: {name, permitted},
-  self,
-  amPrivileged,
-  handlePermissionClick,
-  player,
-  gameHasStarted,
-}: Props) => {
+export default ({user: {name}, self, player}: Props) => {
   const character = player?.character;
 
   return (
-    <>
-      <div style={{display: "flex"}}>
-        <button
-          // ? could make this based on content by displaying all content overlapped, with visibility none toggling
-          style={{width: "3rem"}}
-          disabled={!amPrivileged || self || gameHasStarted}
-          onClick={handlePermissionClick}
-        >
-          {permitted ? "✔" : "❌"}
-        </button>
-      </div>
+    <div
+      style={{
+        marginLeft: "1rem",
+        display: "flex",
+        flexFlow: "column nowrap",
+        justifyContent: "space-around",
+        height: "100%",
+      }}
+    >
+      <p>
+        {name}
+        {self && " (me)"}
+      </p>
 
-      <div style={{marginLeft: "1rem"}}>
-        <p>
-          {name}
-          {self && " (me)"}
-        </p>
-        <p style={{visibility: character?.side ? "visible" : "hidden"}}>
-          {self && character
-            ? charText(character)
-            : character?.side === "evil" && <span>EVIL!</span>}
-          &nbsp;
-          {/* {isLeader && <strong>Leader</strong>} */}
-        </p>
-      </div>
-    </>
+      <p>{character && charText(character)}</p>
+    </div>
   );
 };

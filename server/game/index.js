@@ -21,7 +21,7 @@ class GameServer {
     // this.privateKnowledge = [];
 
     this.service.onTransition(({value, changed}) => {
-      log("onTransition > ", "value:", value, ", changed:", changed);
+      log("onTransition >", "value:", value, "changed:", changed);
       this.lastStateChanged = changed;
       this.currentState = value;
       log("emitting state as", value);
@@ -41,26 +41,29 @@ class GameServer {
       const {players, quests, currentQuest_i, leader_i} = newContext;
       //? this only needs to be done once
       // possibly its own emit specific to characters
-      const evilPlayers = players.reduce(
-        (evils, {character}, index) =>
-          character.side === "evil"
-            ? {
-                ...evils,
-                [this.usersByPlayerIdx.get(index).id]: AN_EVIL_CHARACTER_PLAYER,
-              }
-            : evils,
-        {},
-      );
 
-      players.forEach((player, idx) => {
-        const user = this.usersByPlayerIdx.get(idx);
+      players.forEach((thisPlayer, thisIdx) => {
+        const thisUser = this.usersByPlayerIdx.get(thisIdx);
 
-        user.connection.emit(
+        thisUser.connection.emit(
           "players",
-          {
-            ...(knowsOfEvil(player) ? evilPlayers : {}),
-            [user.id]: player,
-          },
+          players.map((thatPlayer, thatIdx) => {
+            const {id, name} = this.usersByPlayerIdx.get(thatIdx);
+
+            return {
+              // if this player knows of evil, and that player is evil
+              ...(knowsOfEvil(thisPlayer) &&
+              thatPlayer.character.side === "evil"
+                ? AN_EVIL_CHARACTER_PLAYER
+                : {}),
+
+              // all players know themselves
+              ...(thisIdx === thatIdx ? thisPlayer : {}),
+
+              // all players know other player's user id's & names
+              user: {id, name},
+            };
+          }),
           leader_i,
         );
       });

@@ -1,14 +1,18 @@
 // @flow
 
 import type {Side} from "Side";
+import type {UserT} from "User";
 
 type Character = {|
-  +side: Side,
   +description?: string,
+  +side: Side,
   +title?: string,
 |};
 
 export type PlayerT = {|
   +character?: Character,
-  +isLeader?: boolean,
+  +isLeader: boolean,
+  +user: UserT,
 |};
+
+export type Players = $ReadOnlyArray<PlayerT>;

@@ -113,32 +113,36 @@ module.exports = (server) => {
 
     // incoming messages
     clientSocket.on("name", (name) => {
-      name = sanitizedName(name);
+      (() => {
+        name = sanitizedName(name);
 
-      if (!name) {
-        //TODO: emit error, nack, or something // blank name
-        return;
-      }
+        if (!name) {
+          //TODO: emit error, nack, or something // blank name
+          return;
+        }
 
-      const nameLC = name.toLowerCase();
-      if (userNames.has(nameLC)) {
-        //TODO: error, nack, something // name already taken
-        return;
-      }
-      userNames.add(nameLC);
+        const nameLC = name.toLowerCase();
+        if (userNames.has(nameLC)) {
+          //TODO: error, nack, something // name already taken
+          return;
+        }
+        userNames.add(nameLC);
 
-      const prevName = usersByID.get(clientSocket.id).name;
-      if (prevName == undefined) {
-        permittedUserIDs.add(clientSocket.id);
-      }
-      usersByID.get(clientSocket.id).name = name;
+        const prevName = usersByID.get(clientSocket.id).name;
+        if (prevName) {
+          userNames.delete(prevName);
+        } else {
+          permittedUserIDs.add(clientSocket.id);
+        }
+        usersByID.get(clientSocket.id).name = name;
 
-      // extract to something like updatePrivileges(),
-      // to hide this implementation detail
-      //? or have it triggered when emitting users?
-      if (userNames.size === 1) {
-        privilegedUserIDs.add(clientSocket.id);
-      }
+        // extract to something like updatePrivileges(),
+        // to hide this implementation detail
+        //? or have it triggered when emitting users?
+        if (userNames.size === 1) {
+          privilegedUserIDs.add(clientSocket.id);
+        }
+      })();
 
       emitUsers();
       emitReady(); // tie this fn with any change to permittedUsers

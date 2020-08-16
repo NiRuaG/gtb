@@ -4,18 +4,17 @@ import React, {useState} from "react";
 import {partition} from "ramda";
 
 import sanitizedName from "common/sanitizedName";
-
+import type {Socket} from "socket/hook";
+import type {Players} from "Player";
 import User, {type UserT, type Users} from "User";
 
-import type {PlayersMap, Socket} from "socket/hook";
-
 type Props = {|
-  +socket: Socket,
+  +socket: ?Socket,
   +gameState: string,
   +isReady: boolean,
   +users: Users,
-  +myUser: UserT,
-  +playersByID: ?PlayersMap,
+  +myUser: ?UserT,
+  +players: Players,
 |};
 
 export default ({
@@ -24,101 +23,149 @@ export default ({
   users,
   myUser,
   isReady,
-  playersByID,
+  players,
 }: Props) => {
+  const amPrivileged = myUser?.privileged ?? false;
+  const gameHasStarted = gameState !== "idle";
+  const namedUsers = users.filter(({name}) => name);
+
+  const togglePermission = ({id, permitted}) =>
+    amPrivileged && socket?.emit("permit", id, !permitted);
+
+  return (
+    <>
+      <div
+        style={{
+          gridRowStart: 1,
+          marginBottom: "0.5rem",
+          visibility: gameHasStarted ? "hidden" : "visible",
+        }}
+      >
+        <LobbyInfo
+          socket={socket}
+          users={users}
+          myUser={myUser}
+          isReady={isReady}
+        />
+      </div>
+
+      {gameHasStarted
+        ? players.map((player, idx) => (
+            <div
+              key={player.user.id}
+              style={{
+                gridRowStart: idx + 2,
+                borderBottom: "1px solid",
+                padding: "0.2rem 1rem",
+              }}
+            >
+              <User
+                user={player.user}
+                self={player.user.id === myUser?.id}
+                player={player}
+              />
+            </div>
+          ))
+        : namedUsers.map((user, idx) => {
+            const self = user.id === myUser?.id;
+
+            return (
+              <div
+                key={user.id}
+                style={{
+                  gridRowStart: idx + 2,
+                  alignSelf: "flex-start",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <button
+                  // ? could make this based on content by displaying all content overlapped, with visibility none toggling
+                  style={{width: "3rem"}}
+                  disabled={!amPrivileged || self}
+                  onClick={() => togglePermission(user)}
+                >
+                  {user.permitted ? "✔" : "❌"}
+                </button>
+
+                <User user={user} self={self} />
+              </div>
+            );
+          })}
+    </>
+  );
+};
+
+type LobbyInfoProps = {|
+  +socket: ?Socket,
+  +users: Users,
+  +myUser: ?UserT,
+  +isReady: boolean,
+|};
+
+const LobbyInfo = ({socket, users, myUser, isReady}: LobbyInfoProps) => {
   const [formName, setFormName] = useState("");
 
-  const {privileged: amPrivileged = false} = myUser;
-  const amAnon = !myUser.name;
+  const amAnon = !myUser?.name;
+  const amPrivileged = myUser?.privileged ?? false;
+  const permittedUsers = users.filter(({permitted}) => permitted);
   const [{length: anonUsersLen}, namedUsers] = partition<UserT>(
     ({name}) => !name,
   )(users);
-  const permittedUsers = users.filter(({permitted}) => permitted);
-
-  const gameHasStarted = gameState !== "idle";
-
-  const handleNameSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!formName || gameHasStarted) return;
-    return socket?.emit("name", formName);
-  };
 
   const handleNameChange = (event: SyntheticEvent<HTMLInputElement>) => {
     setFormName(sanitizedName(event.currentTarget.value));
   };
 
-  const handleStart = () => amPrivileged && socket.emit("start");
+  const handleStart = () => amPrivileged && socket?.emit("start");
 
-  const togglePermission = ({id, permitted}) =>
-    amPrivileged && socket.emit("permit", id, !permitted);
+  const handleSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!formName) {
+      return setFormName(myUser?.name ?? "");
+    }
+    return socket?.emit("name", formName); // TODO: ack && setFormName
+  };
 
   return (
     <>
-      <div style={{gridRowStart: 1, marginBottom: "0.5rem"}}>
-        <form
-          onSubmit={handleNameSubmit}
-          style={{visibility: gameHasStarted ? "hidden" : "visible"}}
-        >
-          <input
-            type="text"
-            placeholder="Name"
-            autoFocus
-            value={formName}
-            onChange={handleNameChange}
-            disabled={gameHasStarted}
-          />
-        </form>
+      <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          placeholder="Name"
+          autoFocus
+          value={formName}
+          onChange={handleNameChange}
+        />
+      </form>
 
-        <div>
-          <p>
-            {users.length} {users.length > 1 ? "users" : "user"} connected
-          </p>
-          {permittedUsers.length > 0 && (
-            <p>
-              {`${permittedUsers.length} / ${namedUsers.length} ${
-                namedUsers.length > 1 ? " users" : " user"
-              } playing ✔`}
-            </p>
-          )}
+      <p>
+        {users.length} {users.length > 1 ? "users" : "user"} connected
+      </p>
 
-          {amPrivileged && (
-            <button disabled={!isReady || gameHasStarted} onClick={handleStart}>
-              Start
-            </button>
-          )}
-        </div>
-      </div>
+      <p style={{visibility: anonUsersLen > 0 ? "inherit" : "hidden"}}>
+        {anonUsersLen}
+        <i> Anonymous</i>
+        {anonUsersLen > 1 ? " courtiers" : " courtier"}
+        {amAnon && <span> ({anonUsersLen > 1 && "including "}me)</span>}
+        {namedUsers.length > 0 && " and"}
+      </p>
 
-      {namedUsers.map((user, idx) => (
-        <div
-          key={user.id}
-          style={{
-            gridRowStart: idx + 2,
-            alignSelf: "flex-start",
-            height: "100%",
-            display: "flex",
-            alignItems: "center",
-            borderBottom: "1px solid",
-          }}
-        >
-          <User
-            user={user}
-            self={user.id === myUser.id}
-            player={playersByID?.[user.id]}
-            amPrivileged={amPrivileged}
-            handlePermissionClick={() => togglePermission(user)}
-            gameHasStarted={gameHasStarted}
-          />
-        </div>
-      ))}
+      <p
+        style={{
+          visibility: permittedUsers.length > 0 ? "inherit" : "hidden",
+        }}
+      >
+        {`${permittedUsers.length} / ${namedUsers.length} ${
+          namedUsers.length > 1 ? " users" : " user"
+        } playing ✔`}
+      </p>
 
-      {gameState === "idle" && anonUsersLen > 0 && (
-        <p style={{gridRowStart: -2}}>
-          {namedUsers.length > 0 && "and "} {anonUsersLen}
-          <i> Anonymous</i>
-          {anonUsersLen > 1 ? " courtiers" : " courtier"}
-          {amAnon && <span> ({anonUsersLen > 1 && "including "}me)</span>}
-        </p>
+      {amPrivileged && (
+        <button disabled={!isReady} onClick={handleStart}>
+          Start
+        </button>
       )}
     </>
   );

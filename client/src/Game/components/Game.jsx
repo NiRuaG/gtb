@@ -4,10 +4,11 @@ import React from "react";
 import {propSatisfies, equals} from "ramda";
 import styled, {css, type StyledComponent} from "styled-components";
 
+import shuffle from "common/shuffle";
+import useSocket from "socket/hook";
+
 import PlayersContent from "./PlayersContent";
 import QuestsContent from "./QuestsContent";
-
-import useSocket from "socket/hook";
 
 const fullScreenCss = css`
   height: 100vh;
@@ -47,11 +48,10 @@ export default () => {
     users,
     myID,
     isReady,
-    playersByID,
+    players,
     gameState,
-    quests,
-    currentQuestIdx,
-    leaderIdx,
+    // quests,
+    // currentQuestIdx,
   } = useSocket();
 
   //? maybe consider other way than finding each time
@@ -59,37 +59,54 @@ export default () => {
   const myUser =
     (myID != null && users.find(propSatisfies(equals(myID), "id"))) || null;
 
-  const gameHasStarted = gameState !== "idle";
+  // const gameHasStarted = gameState !== "idle";
+
+  const devIDS = users.map(({id}) => id);
 
   return (
     <>
       {amConnected && (
         <MainLayout>
-          {socket && myUser && (
-            <PlayersContent
-              socket={socket}
-              gameState={gameState}
-              isReady={isReady}
-              users={users}
-              myUser={myUser}
-              playersByID={playersByID}
-            />
-          )}
+          <PlayersContent
+            socket={socket}
+            gameState={gameState}
+            isReady={isReady}
+            users={users}
+            myUser={myUser}
+            players={players}
+          />
 
-          {/* {quests && currentQuestIdx != null && ( */}
           <QuestsContent
             quests={[
               {teamSize: 2, failsReq: 1},
-              {teamSize: 2, failsReq: 1},
+              {
+                teamSize: 2,
+                failsReq: 1,
+                voting: [
+                  {
+                    leaderID: users[0]?.id ?? "??",
+                    team: (shuffle(devIDS), devIDS.slice(0, 2)),
+                    votes: players.map((p) => Math.random() > 0.5),
+                    approved: Math.random() > 0.5,
+                  },
+                  {
+                    leaderID: users[1]?.id ?? "??",
+                    team: (shuffle(devIDS), devIDS.slice(0, 2)),
+                    votes: players.map((p) => Math.random() > 0.5),
+                  },
+                  {leaderID: users[2]?.id ?? "??"},
+                  {leaderID: users[3]?.id ?? "??"},
+                  {leaderID: users[4]?.id ?? "??"},
+                ],
+              },
               {teamSize: 2, failsReq: 1},
               {teamSize: 2, failsReq: 2},
             ]}
-            currentQuestIdx={0}
-            playersByID={users.reduce(
-              (acc, curr) => ({...acc, [curr.id]: {}}),
-              {},
-            )}
-            leaderID={users[0].id}
+            // quests={null}
+            currentQuestIdx={1}
+            // currentVoteIdx={0}
+            players={players}
+            leaderID={"???"}
           />
         </MainLayout>
       )}
