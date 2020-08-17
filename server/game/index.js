@@ -38,7 +38,7 @@ class GameServer {
         prevContext,
       );
 
-      const {players, quests, currentQuest_i, leader_i} = newContext;
+      const {players, quests, quest_i, leader_i, vote_i, nominees} = newContext;
       //? this only needs to be done once
       // possibly its own emit specific to characters
 
@@ -64,11 +64,27 @@ class GameServer {
               user: {id, name},
             };
           }),
-          leader_i,
         );
       });
 
-      server.emit("quests", quests, currentQuest_i);
+      if (quests) {
+        quests[quest_i].voting = Array.from({length: 5}, (_, i) => {
+          const leaderID = this.usersByPlayerIdx.get(
+            (leader_i + i) % this.usersByPlayerIdx.size,
+          ).id;
+          return {leaderID};
+        });
+        quests[quest_i].voting[vote_i].team = nominees.map(
+          (idx) => this.usersByPlayerIdx.get(idx).id,
+        );
+        server.emit("quests", quests, quest_i);
+      }
+
+      server.emit("voteIdx", vote_i);
+
+      if (leader_i != null) {
+        server.emit("leaderID", this.usersByPlayerIdx.get(leader_i).id);
+      }
     });
 
     this.service.start();
@@ -86,14 +102,30 @@ class GameServer {
     this.usersByPlayerIdx = new Map(users.map((user, idx) => [idx, user]));
 
     this.service.send("START", {players: {length: users.length}});
-    if (this.lastStateChanged) {
-      return false;
+
+    if (!this.lastStateChanged) {
+      return false; // signify game failed to start
     }
 
-    // TODO: incoming msg handlers
-    // users.forEach(user => {
-    // user.connection.on("");
-    // })
+    // incoming msg handlers
+    users.forEach((user) => {
+      const thisPlayerIdx = this.playerIdxByUserId.get(user.id);
+
+      user.connection.on("propose", (teamIDs) => {
+        const nominees = teamIDs.map((id) => this.playerIdxByUserId.get(id));
+
+        this.service.send("NOMINATE", {
+          sourcePlayerIdx: thisPlayerIdx,
+          nominees,
+        });
+
+        if (!this.lastStateChanged) {
+          // todo: nack
+        }
+      });
+    });
+
+    return true; // signify game started successfully
 
     //? this.service.onDone(() => return true);
 

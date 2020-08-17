@@ -60,13 +60,18 @@ const initQuests = (_, {players: {length}}) => CONFIG[length].quests;
 const initLeaderIdx = (_, {players: {length}}) =>
   Math.floor(Math.random() * length);
 
+const setNominees = assign({
+  nominees: (_, {nominees}) => nominees,
+});
+
 const initContext = assign({
   players: initPlayers,
   leader_i: initLeaderIdx,
   nominees: [],
   quests: initQuests,
-  currentQuest_i: 0,
+  quest_i: 0,
   votes: [],
+  vote_i: 0,
 });
 
 const gameMachine = Machine(
@@ -78,8 +83,9 @@ const gameMachine = Machine(
       leader_i: null,
       nominees: [],
       quests: null,
-      currentQuest_i: null,
+      quest_i: null,
       votes: [],
+      vote_i: null,
     },
 
     initial: "idle",
@@ -99,7 +105,11 @@ const gameMachine = Machine(
       propose: {
         // entry: log("entered propose"),
         on: {
-          NOMINATE: "castVotes",
+          NOMINATE: {
+            target: "castVotes",
+            actions: setNominees,
+            cond: "canPropose",
+          },
         },
       },
 
@@ -119,12 +129,12 @@ const gameMachine = Machine(
 
       embark: {
         on: {
-          SUCCESS: "checkSuccEOG",
+          SUCCESS: "checkSuccessEOG",
           FAILURE: "checkFailEOG",
         },
       },
 
-      checkSuccEOG: {
+      checkSuccessEOG: {
         on: {
           TRIGGER: "assassinate",
           NEXT: "propose",
@@ -154,9 +164,24 @@ const gameMachine = Machine(
       },
     },
   },
+
   {
     guards: {
       canStart: (_, {players}) => players != null && canStart(players),
+      canPropose: (
+        {quests, quest_i, leader_i, players: {length}},
+        {sourcePlayerIdx, nominees},
+      ) => {
+        if (!Array.isArray(nominees) || sourcePlayerIdx == null) return false;
+
+        const proposedByLeader = sourcePlayerIdx === leader_i;
+        const correctTeamSize = nominees.length === quests[quest_i].teamSize;
+        const validTeamIndices = nominees.every(
+          (idx) => idx >= 0 && idx < length,
+        );
+
+        return proposedByLeader && correctTeamSize && validTeamIndices;
+      },
     },
   },
 );

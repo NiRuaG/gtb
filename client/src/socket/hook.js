@@ -9,10 +9,6 @@ import type {Quests} from "Quest";
 
 export type {Socket} from "socket.io-client";
 
-export type PlayersMap = {|
-  [UserID]: PlayerT,
-|};
-
 export default () => {
   const socketRef = useRef<?Socket>(null);
 
@@ -21,10 +17,11 @@ export default () => {
   const [myID, setMyID] = useState<?UserID>(null);
   const [isReady, setIsReady] = useState(false);
   const [players, setPlayers] = useState<$ReadOnlyArray<PlayerT>>([]);
-  // const [leaderID, setLeaderID] = useState<?number>(null);
+  const [leaderID, setLeaderID] = useState<?UserID>(null);
   const [gameState, setGameState] = useState("idle"); // ? common piece of const data
   const [quests, setQuests] = useState<?Quests>(null);
-  const [currentQuestIdx, setCurrentQuestIdx] = useState<?number>(null);
+  const [questIdx, setQuestIdx] = useState<?number>(null);
+  const [voteIdx, setVoteIdx] = useState<?number>(null);
 
   useEffect(() => {
     const socket = openSocket("/");
@@ -42,8 +39,10 @@ export default () => {
     socket.on<string, void>("gameState", setGameState);
     socket.on<Quests, number, void>("quests", (quests, idx) => {
       setQuests(quests);
-      setCurrentQuestIdx(idx);
+      setQuestIdx(idx);
     });
+    socket.on<?number, void>("voteIdx", setVoteIdx);
+    socket.on<?UserID, void>("leaderID", setLeaderID);
 
     return () => {
       socket.close();
@@ -59,6 +58,8 @@ export default () => {
     players,
     gameState,
     quests,
-    currentQuestIdx,
+    questIdx,
+    voteIdx,
+    leaderID,
   };
 };

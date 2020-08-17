@@ -43,7 +43,7 @@ module.exports = (server) => {
       connection: clientSocket,
     });
 
-    //! v devonly v
+    //! v dev only v
     {
       const name = clientSocket.id.slice(0, 4).toLowerCase();
       userNames.add(name);
@@ -60,7 +60,7 @@ module.exports = (server) => {
       emitUsers();
       emitReady(); // tie this fn with any change to permittedUsers
     }
-    //! ^ devonly ^
+    //! ^ dev only ^
 
     clientSocket.emit("connected", true);
     emitUsers();
@@ -225,9 +225,10 @@ module.exports = (server) => {
       }
 
       console.log("successful start");
-      console.log("disconnecting non-permitted users");
+      console.log("disconnecting non-permitted users:");
       usersByID.forEach(({connection}, id) => {
         if (!permittedUserIDs.has(id)) {
+          console.log("\t", id);
           connection.disconnect(true);
         }
       });

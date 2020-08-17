@@ -50,8 +50,10 @@ export default () => {
     isReady,
     players,
     gameState,
-    // quests,
-    // currentQuestIdx,
+    quests,
+    questIdx,
+    voteIdx,
+    leaderID,
   } = useSocket();
 
   //? maybe consider other way than finding each time
@@ -60,6 +62,7 @@ export default () => {
     (myID != null && users.find(propSatisfies(equals(myID), "id"))) || null;
 
   // const gameHasStarted = gameState !== "idle";
+  const amLeader = (myUser?.id && myUser.id === leaderID) ?? false;
 
   const devIDS = users.map(({id}) => id);
 
@@ -77,36 +80,24 @@ export default () => {
           />
 
           <QuestsContent
-            quests={[
-              {teamSize: 2, failsReq: 1},
-              {
-                teamSize: 2,
-                failsReq: 1,
-                voting: [
-                  {
-                    leaderID: users[0]?.id ?? "??",
-                    team: (shuffle(devIDS), devIDS.slice(0, 2)),
-                    votes: players.map((p) => Math.random() > 0.5),
-                    approved: Math.random() > 0.5,
-                  },
-                  {
-                    leaderID: users[1]?.id ?? "??",
-                    team: (shuffle(devIDS), devIDS.slice(0, 2)),
-                    votes: players.map((p) => Math.random() > 0.5),
-                  },
-                  {leaderID: users[2]?.id ?? "??"},
-                  {leaderID: users[3]?.id ?? "??"},
-                  {leaderID: users[4]?.id ?? "??"},
-                ],
-              },
-              {teamSize: 2, failsReq: 1},
-              {teamSize: 2, failsReq: 2},
-            ]}
-            // quests={null}
-            currentQuestIdx={1}
-            // currentVoteIdx={0}
+            socket={socket}
+            gameState={gameState}
+            quests={quests}
+            // quests={[
+            //   {
+            //     voting: [
+            //       {
+            //         votes: players.map((p) => Math.random() > 0.5),
+            //         approved: Math.random() > 0.5,
+            //       },
+            //       {
+            //         votes: players.map((p) => Math.random() > 0.5),
+            //       },
+            // ]}
+            questIdx={questIdx}
+            voteIdx={voteIdx}
             players={players}
-            leaderID={"???"}
+            amLeader={amLeader}
           />
         </MainLayout>
       )}
