@@ -18,18 +18,11 @@ type Empty = {||};
 
 const MainLayout: StyledComponent<Empty, Empty, HTMLDivElement> = styled.div`
   ${fullScreenCss}
-  background: white;
   display: grid;
   grid-template-columns: max-content [QComp] max-content [QCurr] max-content [QFut] max-content;
   grid-template-rows: max-content repeat(10, 1fr) max-content;
-  /* row-gap: 0.2rem; */
-
-  padding-top: 2rem;
-  padding-bottom: 2rem;
-  padding-left: 5rem;
-  /* justify-content: center; */
-  /* align-items: center; */
-  /* user-select: none; */
+  background: white;
+  padding: 2rem 5rem;
 `;
 
 const Diagnostics: StyledComponent<Empty, Empty, HTMLDivElement> = styled.div`
@@ -62,9 +55,7 @@ export default () => {
     (myID != null && users.find(propSatisfies(equals(myID), "id"))) || null;
 
   // const gameHasStarted = gameState !== "idle";
-  const amLeader = (myUser?.id && myUser.id === leaderID) ?? false;
-
-  const devIDS = users.map(({id}) => id);
+  const amLeader = leaderID != null && myUser?.id === leaderID;
 
   return (
     <>

@@ -4,8 +4,9 @@ import React, {useState} from "react";
 import {splitAt} from "ramda";
 
 import type {Players} from "Player";
-import Quest, {type QuestT, type Quests} from "Quest";
+import Quest, {VoteTrack, type QuestT, type Quests} from "Quest";
 import type {UserID, UserT} from "User";
+import type {Socket} from "socket/hook";
 
 type Props = {|
   +socket: ?Socket,
@@ -26,12 +27,31 @@ export default ({
   socket,
   gameState,
 }: Props) => {
+  const [proposedTeamIDs, setProposedTeamIDs] = useState(new Set<UserID>());
+
   if (quests == null || questIdx == null || voteIdx == null) return null;
 
   const [
     completedQuests,
     [currentQuest, ...incompleteQuests],
   ] = splitAt<QuestT>(questIdx, quests);
+
+  const canPropose = proposedTeamIDs.size === currentQuest.teamSize;
+
+  const proposeTeam = () => {
+    if (!canPropose) return;
+    return socket?.emit("propose", [...proposedTeamIDs]);
+  };
+
+  const toggleOnTeam = ({id}) => {
+    if (proposedTeamIDs.has(id)) {
+      setProposedTeamIDs((ids) => (ids.delete(id), new Set(ids)));
+    } else {
+      setProposedTeamIDs((ids) => new Set(ids).add(id));
+    }
+  };
+
+  const castMyVote = (approved) => socket?.emit("castVote", approved);
 
   return (
     <>
@@ -41,70 +61,6 @@ export default ({
         ))}
       </div>
 
-      <CurrentQuest
-        quest={currentQuest}
-        players={players}
-        voteIdx={voteIdx}
-        amLeader={amLeader}
-        socket={socket}
-        gameState={gameState}
-      />
-
-      <div style={{gridRowStart: 1, gridColumnStart: "QFut", display: "flex"}}>
-        {incompleteQuests.map((quest, idx) => (
-          <Quest
-            key={`Quest-Incomplete-${idx}`}
-            quest={quest}
-            isCurrQuest={false}
-          />
-        ))}
-      </div>
-    </>
-  );
-};
-
-type CurrentQuestProps = {|
-  +quest: QuestT,
-  +players: Players,
-  +voteIdx: number,
-  +amLeader: boolean,
-  +socket: ?Socket,
-  +gameState: string,
-|};
-
-const CurrentQuest = ({
-  quest,
-  players,
-  voteIdx,
-  amLeader,
-  socket,
-  gameState,
-}: CurrentQuestProps) => {
-  const [proposedTeamIDs, setProposedTeamIDs] = useState<$ReadOnlySet<UserID>>(
-    new Set(),
-  );
-
-  const canPropose = proposedTeamIDs.size === quest.teamSize;
-
-  const toggleOnTeam = ({id}) => {
-    if (proposedTeamIDs.has(id)) {
-      setProposedTeamIDs(
-        (proposedTeamIDs) => (
-          proposedTeamIDs.delete(id), new Set(proposedTeamIDs)
-        ),
-      );
-    } else {
-      setProposedTeamIDs((proposedTeamIDs) => new Set(proposedTeamIDs).add(id));
-    }
-  };
-
-  const proposeTeam = () => {
-    if (!canPropose) return;
-    return socket?.emit("propose", [...proposedTeamIDs]);
-  };
-
-  return (
-    <>
       <div
         style={{
           gridRowStart: 1,
@@ -112,51 +68,19 @@ const CurrentQuest = ({
           display: "flex",
           flexFlow: "column nowrap",
           alignItems: "center",
-          justifyContent: "space-between",
         }}
       >
-        <Quest quest={quest} isCurrQuest={true} />
-        <p>Vote Track</p>
-        <div>
-          {amLeader && gameState === "propose" ? (
-            <button disabled={!canPropose} onClick={proposeTeam}>
-              {`Propose (${proposedTeamIDs.size})`}
-            </button>
-          ) : (
-            <button disabled={gameState !== "castVotes"}>todo_App/Rej</button>
-          )}
-        </div>
-        <div
-          style={{
-            display: "flex",
-            borderRight: "1px solid",
-            borderBottom: "1px solid",
-          }}
-        >
-          {[1, 2, 3, 4, 5].map((i) => {
-            const isCurrVote = i - 1 === voteIdx;
+        <Quest quest={currentQuest} isCurrQuest={true} />
 
-            return (
-              <div
-                key={`vote-track-${i}`}
-                style={{
-                  borderLeft: "1px solid",
-                  width: "2.8rem",
-                  display: "flex",
-                  justifyContent: "center",
-                  background: isCurrVote
-                    ? "black"
-                    : i === 5
-                    ? "lightcoral"
-                    : "white",
-                  color: isCurrVote ? "white" : "black",
-                }}
-              >
-                {i}
-              </div>
-            );
-          })}
-        </div>
+        <VoteTrack
+          quest={currentQuest}
+          players={players}
+          voteIdx={voteIdx}
+          amLeader={amLeader}
+          socket={socket}
+          gameState={gameState}
+          proposedTeamIDs={proposedTeamIDs}
+        />
       </div>
 
       {players.map(({user}, pi) => (
@@ -173,7 +97,7 @@ const CurrentQuest = ({
         >
           <PlayerVotingRow
             playerIdx={pi}
-            quest={quest}
+            quest={currentQuest}
             user={user}
             amLeader={amLeader}
             voteIdx={voteIdx}
@@ -183,6 +107,50 @@ const CurrentQuest = ({
           />
         </div>
       ))}
+
+      <div
+        style={{
+          gridRowStart: players.length + 2,
+          gridColumnStart: "QCurr",
+          display: "flex",
+          justifyContent: "center",
+          height: "min-content",
+          padding: "1rem",
+        }}
+      >
+        {amLeader && gameState === "propose" ? (
+          <button disabled={!canPropose} onClick={proposeTeam}>
+            {`Propose (${proposedTeamIDs.size})`}
+          </button>
+        ) : (
+          <>
+            <button
+              disabled={gameState !== "castVotes"}
+              onClick={() => castMyVote(true)}
+            >
+              Approve ✔
+            </button>
+
+            <button
+              style={{marginLeft: "0.3rem"}}
+              disabled={gameState !== "castVotes"}
+              onClick={() => castMyVote(false)}
+            >
+              Reject ❌
+            </button>
+          </>
+        )}
+      </div>
+
+      <div style={{gridRowStart: 1, gridColumnStart: "QFut", display: "flex"}}>
+        {incompleteQuests.map((quest, idx) => (
+          <Quest
+            key={`Quest-Incomplete-${idx}`}
+            quest={quest}
+            isCurrQuest={false}
+          />
+        ))}
+      </div>
     </>
   );
 };
@@ -194,7 +162,7 @@ type PlayerVotingRowProps = {|
   +proposedTeamIDs: $ReadOnlySet<UserID>,
   +user: UserT,
   +voteIdx: number,
-  +voting: QuestT,
+  +quest: QuestT,
   +gameState: string,
 |};
 

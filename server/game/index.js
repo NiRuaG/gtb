@@ -1,9 +1,9 @@
+const {interpret} = require("xstate");
 const {canStart} = require("./config");
 const gameService = require("./machine");
 const shuffle = require("./../../client/src/common/shuffle");
-const {interpret} = require("xstate");
 
-const log = (msg, ...rest) => console.log(`Game Server > ${msg}`, ...rest);
+const log = (msg, ...rest) => console.log("Game Server >", msg, ...rest);
 
 const knowsOfEvil = ({character}) =>
   character.side === "evil" || character.title === "Merlin";
@@ -17,14 +17,14 @@ class GameServer {
     log("constructing game with server", server);
     this.server = server;
     this.service = gameService;
-    // this.publicKnowledge = {};
-    // this.privateKnowledge = [];
+    this.voteHistory = [];
+    this.currentVotes = [];
 
     this.service.onTransition(({value, changed}) => {
       log("onTransition >", "value:", value, "changed:", changed);
       this.lastStateChanged = changed;
       this.currentState = value;
-      log("emitting state as", value);
+      log(`emitting gameState as "${value}"`);
       server.emit("gameState", value);
     });
 
@@ -38,9 +38,16 @@ class GameServer {
         prevContext,
       );
 
-      const {players, quests, quest_i, leader_i, vote_i, nominees} = newContext;
-      //? this only needs to be done once
-      // possibly its own emit specific to characters
+      const {
+        players,
+        quests,
+        quest_i,
+        leader_i,
+        rejections,
+        nominees,
+      } = newContext;
+      //? player character assignment only needs to be done once
+      // possibly make it its own emit?
 
       players.forEach((thisPlayer, thisIdx) => {
         const thisUser = this.usersByPlayerIdx.get(thisIdx);
@@ -74,13 +81,13 @@ class GameServer {
           ).id;
           return {leaderID};
         });
-        quests[quest_i].voting[vote_i].team = nominees.map(
+        quests[quest_i].voting[rejections].team = nominees.map(
           (idx) => this.usersByPlayerIdx.get(idx).id,
         );
         server.emit("quests", quests, quest_i);
       }
 
-      server.emit("voteIdx", vote_i);
+      server.emit("voteIdx", rejections);
 
       if (leader_i != null) {
         server.emit("leaderID", this.usersByPlayerIdx.get(leader_i).id);
@@ -90,9 +97,7 @@ class GameServer {
     this.service.start();
   }
 
-  hasStarted() {
-    return this.service.state.value != "idle";
-  }
+  hasStarted = () => this.service.state.value !== "idle"; //? != ~this.service.machine.initialState~
 
   canStart = canStart;
 
@@ -104,7 +109,8 @@ class GameServer {
     this.service.send("START", {players: {length: users.length}});
 
     if (!this.lastStateChanged) {
-      return false; // signify game failed to start
+      console.log("state did not change after sending START event");
+      return false; // false to signify game failed to start
     }
 
     // incoming msg handlers
@@ -120,25 +126,34 @@ class GameServer {
         });
 
         if (!this.lastStateChanged) {
+          console.log("state did not change after sending NOMINATE event");
           // todo: nack
+          return;
         }
+
+        // reset currentVotes to empty
+        // console.log("resetting current vote");
+        this.currentVotes = Array(users.length).fill(null);
+      });
+
+      user.connection.on("castVote", (approval) => {
+        console.log(user.name, "approval", approval);
+        // console.log(this.service.state.context);
+        this.currentVotes[thisPlayerIdx] = approval;
+        if (this.currentVotes.every((v) => v != null)) {
+          console.log("have all votes", this.currentVotes);
+          this.service.send("VOTE", {votes: this.currentVotes});
+
+          if (!this.lastStateChanged) {
+          }
+        }
+        // this.voteHistory[this.service.machine.context.quest_i];
       });
     });
 
     return true; // signify game started successfully
 
     //? this.service.onDone(() => return true);
-
-    // this.publicKnowledge.quests = config.quests;
-    // this.assignCharacters(config);
-    // this.assignRandomLeader();
-    // this.assignKnowledge();
-  }
-
-  assignRandomLeader() {
-    const {players, publicKnowledge} = this;
-    const randomIdx = Math.floor(Math.random() * players.length);
-    players.forEach((p) => (p.isLeader = i === randomIdx));
   }
 }
 

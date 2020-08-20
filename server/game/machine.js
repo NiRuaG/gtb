@@ -64,6 +64,18 @@ const setNominees = assign({
   nominees: (_, {nominees}) => nominees,
 });
 
+const nextLeader = assign({
+  leader_i: ({leader_i, players: {length}}) => (leader_i + 1) % length,
+});
+
+const incRejections = assign({
+  rejections: ({rejections}) => rejections + 1,
+});
+
+const storeCurrentVotes = assign({
+  votes: (_, {votes}) => votes,
+});
+
 const initContext = assign({
   players: initPlayers,
   leader_i: initLeaderIdx,
@@ -71,7 +83,7 @@ const initContext = assign({
   quests: initQuests,
   quest_i: 0,
   votes: [],
-  vote_i: 0,
+  rejections: 0,
 });
 
 const gameMachine = Machine(
@@ -85,7 +97,7 @@ const gameMachine = Machine(
       quests: null,
       quest_i: null,
       votes: [],
-      vote_i: null,
+      rejections: null,
     },
 
     initial: "idle",
@@ -115,26 +127,42 @@ const gameMachine = Machine(
 
       castVotes: {
         on: {
-          APPROVE: "embark",
-          REJECT: "checkRejEOG",
+          VOTE: {
+            target: "tallyVotes",
+            cond: "validVoting",
+            actions: storeCurrentVotes,
+          },
         },
       },
 
-      checkRejEOG: {
-        on: {
-          TRIGGER: "evilWins",
-          NEXT: "propose",
-        },
+      tallyVotes: {
+        entry: logEvent("tally votes"),
+        always: [
+          {target: "embark", cond: "teamIsApproved"},
+          {target: "checkRejEOG", actions: incRejections},
+        ],
       },
 
       embark: {
-        on: {
-          SUCCESS: "checkSuccessEOG",
-          FAILURE: "checkFailEOG",
-        },
+        entry: logEvent("embark"),
+        type: "final",
+        // on: {
+        //   SUCCESS: "checkSuccessEOG",
+        //   FAILURE: "checkFailEOG",
+        // },
+      },
+
+      checkRejEOG: {
+        entry: logEvent("check rejections end of game"),
+        type: "final",
+        // on: {
+        //   TRIGGER: "evilWins",
+        //   NEXT: "propose",
+        // },
       },
 
       checkSuccessEOG: {
+        entry: logEvent("check quest success end of game"),
         on: {
           TRIGGER: "assassinate",
           NEXT: "propose",
@@ -142,6 +170,7 @@ const gameMachine = Machine(
       },
 
       checkFailEOG: {
+        entry: logEvent("check quest fail end of game"),
         on: {
           TRIGGER: "evilWins",
           NEXT: "propose",
@@ -149,6 +178,7 @@ const gameMachine = Machine(
       },
 
       assassinate: {
+        entry: logEvent("assassinate"),
         on: {
           hit: "evilWins",
           miss: "goodWins",
@@ -156,10 +186,12 @@ const gameMachine = Machine(
       },
 
       evilWins: {
+        entry: logEvent("evil wins"),
         type: "final",
       },
 
       goodWins: {
+        entry: logEvent("good wins"),
         type: "final",
       },
     },
@@ -168,6 +200,7 @@ const gameMachine = Machine(
   {
     guards: {
       canStart: (_, {players}) => players != null && canStart(players),
+
       canPropose: (
         {quests, quest_i, leader_i, players: {length}},
         {sourcePlayerIdx, nominees},
@@ -182,6 +215,17 @@ const gameMachine = Machine(
 
         return proposedByLeader && correctTeamSize && validTeamIndices;
       },
+
+      validVoting: ({players: {length}}, {votes}) => {
+        if (!Array.isArray(votes)) return false;
+
+        if (votes.length !== length) return false;
+
+        return votes.every((v) => typeof v === "boolean");
+      },
+
+      teamIsApproved: ({votes, players: {length}}) =>
+        votes.filter(Boolean).length * 2 > length,
     },
   },
 );
