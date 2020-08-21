@@ -16,6 +16,7 @@ type Props = {|
   +voteIdx: ?number,
   +amLeader: boolean,
   +gameState: string,
+  +canVote: boolean,
 |};
 
 export default ({
@@ -26,8 +27,10 @@ export default ({
   amLeader,
   socket,
   gameState,
+  canVote,
 }: Props) => {
   const [proposedTeamIDs, setProposedTeamIDs] = useState(new Set<UserID>());
+  const [myVote, setMyVote] = useState<?boolean>(null);
 
   if (quests == null || questIdx == null || voteIdx == null) return null;
 
@@ -51,7 +54,9 @@ export default ({
     }
   };
 
-  const castMyVote = (approved) => socket?.emit("castVote", approved);
+  const castMyVote = (approved) => (
+    setMyVote(approved), socket?.emit("castVote", approved)
+  );
 
   return (
     <>
@@ -124,20 +129,21 @@ export default ({
           </button>
         ) : (
           <>
-            <button
-              disabled={gameState !== "castVotes"}
-              onClick={() => castMyVote(true)}
-            >
-              Approve ✔
-            </button>
+            {myVote !== false && (
+              <button disabled={!canVote} onClick={() => castMyVote(true)}>
+                {myVote != null ? "Approved ✔" : "Approve"}
+              </button>
+            )}
 
-            <button
-              style={{marginLeft: "0.3rem"}}
-              disabled={gameState !== "castVotes"}
-              onClick={() => castMyVote(false)}
-            >
-              Reject ❌
-            </button>
+            {myVote !== true && (
+              <button
+                style={{marginLeft: "0.3rem"}}
+                disabled={!canVote}
+                onClick={() => castMyVote(false)}
+              >
+                {myVote != null ? "Rejected ❌" : "Reject"}
+              </button>
+            )}
           </>
         )}
       </div>

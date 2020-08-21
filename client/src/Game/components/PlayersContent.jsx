@@ -37,7 +37,6 @@ export default ({
       <div
         style={{
           gridRowStart: 1,
-          marginBottom: "0.5rem",
           visibility: gameHasStarted ? "hidden" : "visible",
         }}
       >

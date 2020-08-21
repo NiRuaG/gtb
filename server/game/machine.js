@@ -136,15 +136,16 @@ const gameMachine = Machine(
       },
 
       tallyVotes: {
-        entry: logEvent("tally votes"),
+        entry: logEvent("tallyVotes"),
         always: [
-          {target: "embark", cond: "teamIsApproved"},
+          {target: "questing", cond: "teamIsApproved"},
           {target: "checkRejEOG", actions: incRejections},
         ],
+        //? exit: clearVotes,
       },
 
-      embark: {
-        entry: logEvent("embark"),
+      questing: {
+        entry: logEvent("questing"),
         type: "final",
         // on: {
         //   SUCCESS: "checkSuccessEOG",

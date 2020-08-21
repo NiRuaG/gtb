@@ -2,6 +2,7 @@ const {interpret} = require("xstate");
 const {canStart} = require("./config");
 const gameService = require("./machine");
 const shuffle = require("./../../client/src/common/shuffle");
+const e = require("express");
 
 const log = (msg, ...rest) => console.log("Game Server >", msg, ...rest);
 
@@ -17,7 +18,7 @@ class GameServer {
     log("constructing game with server", server);
     this.server = server;
     this.service = gameService;
-    this.voteHistory = [];
+    this.questVotesHistory = Array(5).fill(null);
     this.currentVotes = [];
 
     this.service.onTransition(({value, changed}) => {
@@ -45,10 +46,11 @@ class GameServer {
         leader_i,
         rejections,
         nominees,
+        votes,
       } = newContext;
+
       //? player character assignment only needs to be done once
       // possibly make it its own emit?
-
       players.forEach((thisPlayer, thisIdx) => {
         const thisUser = this.usersByPlayerIdx.get(thisIdx);
 
@@ -75,15 +77,33 @@ class GameServer {
       });
 
       if (quests) {
-        quests[quest_i].voting = Array.from({length: 5}, (_, i) => {
-          const leaderID = this.usersByPlayerIdx.get(
-            (leader_i + i) % this.usersByPlayerIdx.size,
-          ).id;
-          return {leaderID};
+        quests.forEach((quest, qi) => {
+          quest.voting = this.questVotesHistory[qi];
         });
-        quests[quest_i].voting[rejections].team = nominees.map(
-          (idx) => this.usersByPlayerIdx.get(idx).id,
-        );
+
+        // quests[quest_i].voting = Array.from({length: 5}, (_, i) => {
+        //   const leaderID = this.usersByPlayerIdx.get(
+        //     (leader_i + i) % this.usersByPlayerIdx.size,
+        //   ).id;
+
+        //   return {leaderID};
+        // });
+
+        // quests[quest_i].voting[rejections].team = nominees.map(
+        //   (idx) => this.usersByPlayerIdx.get(idx).id,
+        // );
+
+        // quests.forEach((quest, qi) => {
+        //   if (quest.voting) {
+        //     console.log("quest.voting", quest.voting);
+        //     quest.voting.forEach((oneVoting, vi) => {
+        //       oneVoting.votes = this.voteHistory[qi][vi];
+        //     });
+        //   }
+        // });
+        // console.log("vote.history", this.voteHistory);
+        // console.log({quests});
+
         server.emit("quests", quests, quest_i);
       }
 
@@ -131,23 +151,65 @@ class GameServer {
           return;
         }
 
+        // ? these two v similar, possibly link side effects to one
         // reset currentVotes to empty
         // console.log("resetting current vote");
         this.currentVotes = Array(users.length).fill(null);
+        // reset vote capabilities for all
+        users.forEach(({connection}) => connection.emit("canVote", true));
       });
 
       user.connection.on("castVote", (approval) => {
         console.log(user.name, "approval", approval);
         // console.log(this.service.state.context);
-        this.currentVotes[thisPlayerIdx] = approval;
+        if (this.currentVotes[thisPlayerIdx] == null) {
+          this.currentVotes[thisPlayerIdx] = approval;
+        } else {
+          //? TODO log
+        }
+
+        user.connection.emit("canVote", false);
+
         if (this.currentVotes.every((v) => v != null)) {
           console.log("have all votes", this.currentVotes);
+
+          const {quest_i, rejections} = this.service.state.context;
+          // console.log(
+          //   {quest_i, rejections},
+          //   this.currentVotes,
+          //   this.voteHistory,
+          // );
+          this.voteHistory[quest_i][rejections] = this.currentVotes;
+          // quests[quest_i].voting = Array.from({length: 5}, (_, i) => {
+          //   const leaderID = this.usersByPlayerIdx.get(
+          //     (leader_i + i) % this.usersByPlayerIdx.size,
+          //   ).id;
+
+          //   return {leaderID};
+          // });
+
+          // quests[quest_i].voting[rejections].team = nominees.map(
+          //   (idx) => this.usersByPlayerIdx.get(idx).id,
+          // );
+
+          // quests.forEach((quest, qi) => {
+          //   if (quest.voting) {
+          //     console.log("quest.voting", quest.voting);
+          //     quest.voting.forEach((oneVoting, vi) => {
+          //       oneVoting.votes = this.voteHistory[qi][vi];
+          //     });
+          //   }
+          // });
+          // console.log("vote.history", this.voteHistory);
+          // console.log({quests});
+
           this.service.send("VOTE", {votes: this.currentVotes});
 
           if (!this.lastStateChanged) {
+            //TODO
           }
         }
-        // this.voteHistory[this.service.machine.context.quest_i];
+        //TODO this.voteHistory[this.service.machine.context.quest_i];
       });
     });
 

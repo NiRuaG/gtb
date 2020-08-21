@@ -22,6 +22,7 @@ export default () => {
   const [quests, setQuests] = useState<?Quests>(null);
   const [questIdx, setQuestIdx] = useState<?number>(null);
   const [voteIdx, setVoteIdx] = useState<?number>(null);
+  const [canVote, setCanVote] = useState(false);
 
   useEffect(() => {
     const socket = openSocket("/");
@@ -43,6 +44,7 @@ export default () => {
     });
     socket.on<?number, void>("voteIdx", setVoteIdx);
     socket.on<?UserID, void>("leaderID", setLeaderID);
+    socket.on<boolean, void>("canVote", setCanVote);
 
     return () => {
       socket.close();
@@ -61,5 +63,6 @@ export default () => {
     questIdx,
     voteIdx,
     leaderID,
+    canVote,
   };
 };

@@ -22,7 +22,7 @@ const MainLayout: StyledComponent<Empty, Empty, HTMLDivElement> = styled.div`
   grid-template-columns: max-content [QComp] max-content [QCurr] max-content [QFut] max-content;
   grid-template-rows: max-content repeat(10, 1fr) max-content;
   background: white;
-  padding: 2rem 5rem;
+  padding: 2rem 3rem;
 `;
 
 const Diagnostics: StyledComponent<Empty, Empty, HTMLDivElement> = styled.div`
@@ -47,6 +47,7 @@ export default () => {
     questIdx,
     voteIdx,
     leaderID,
+    canVote,
   } = useSocket();
 
   //? maybe consider other way than finding each time
@@ -74,6 +75,7 @@ export default () => {
             socket={socket}
             gameState={gameState}
             quests={quests}
+            canVote={canVote}
             // quests={[
             //   {
             //     voting: [
