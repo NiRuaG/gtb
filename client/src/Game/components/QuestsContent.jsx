@@ -1,6 +1,6 @@
 // @flow
 
-import React, {useState} from "react";
+import React, {useState, useEffect} from "react";
 import {splitAt} from "ramda";
 
 import type {Players} from "Player";
@@ -31,6 +31,8 @@ export default ({
 }: Props) => {
   const [proposedTeamIDs, setProposedTeamIDs] = useState(new Set<UserID>());
   const [myVote, setMyVote] = useState<?boolean>(null);
+
+  useEffect(() => setMyVote(null), [voteIdx]);
 
   if (quests == null || questIdx == null || voteIdx == null) return null;
 

@@ -46,7 +46,6 @@ class GameServer {
         leader_i,
         rejections,
         nominees,
-        votes,
       } = newContext;
 
       //? player character assignment only needs to be done once
@@ -76,22 +75,33 @@ class GameServer {
         );
       });
 
-      if (quests) {
+      if (quests && quest_i != null) {
+        if (this.questVotesHistory[quest_i] == null) {
+          this.questVotesHistory[quest_i] = Array.from({length: 5}, (_, i) => {
+            const leaderID = this.usersByPlayerIdx.get(
+              (leader_i + i) % this.usersByPlayerIdx.size,
+            ).id;
+
+            return {leaderID};
+          });
+        }
+
+        console.log({nominees}, this.questVotesHistory);
+        if (
+          nominees.length &&
+          this.questVotesHistory[quest_i][rejections].team == null
+        ) {
+          this.questVotesHistory[quest_i][rejections].team = nominees.map(
+            (idx) => this.usersByPlayerIdx.get(idx).id,
+          );
+        }
+        console.log("qvh", this.questVotesHistory);
+
         quests.forEach((quest, qi) => {
           quest.voting = this.questVotesHistory[qi];
         });
 
-        // quests[quest_i].voting = Array.from({length: 5}, (_, i) => {
-        //   const leaderID = this.usersByPlayerIdx.get(
-        //     (leader_i + i) % this.usersByPlayerIdx.size,
-        //   ).id;
-
-        //   return {leaderID};
-        // });
-
-        // quests[quest_i].voting[rejections].team = nominees.map(
-        //   (idx) => this.usersByPlayerIdx.get(idx).id,
-        // );
+        console.log({quests});
 
         // quests.forEach((quest, qi) => {
         //   if (quest.voting) {
@@ -107,7 +117,7 @@ class GameServer {
         server.emit("quests", quests, quest_i);
       }
 
-      server.emit("voteIdx", rejections);
+      server.emit("voteIdx", rejections); // TODO: consistency
 
       if (leader_i != null) {
         server.emit("leaderID", this.usersByPlayerIdx.get(leader_i).id);
@@ -117,7 +127,8 @@ class GameServer {
     this.service.start();
   }
 
-  hasStarted = () => this.service.state.value !== "idle"; //? != ~this.service.machine.initialState~
+  hasStarted = () =>
+    this.service.state.value !== this.service.machine.initialState.value;
 
   canStart = canStart;
 
@@ -179,7 +190,7 @@ class GameServer {
           //   this.currentVotes,
           //   this.voteHistory,
           // );
-          this.voteHistory[quest_i][rejections] = this.currentVotes;
+          this.questVotesHistory[quest_i][rejections].votes = this.currentVotes;
           // quests[quest_i].voting = Array.from({length: 5}, (_, i) => {
           //   const leaderID = this.usersByPlayerIdx.get(
           //     (leader_i + i) % this.usersByPlayerIdx.size,

@@ -64,6 +64,10 @@ const setNominees = assign({
   nominees: (_, {nominees}) => nominees,
 });
 
+const clearNominees = assign({
+  nominees: () => [],
+});
+
 const nextLeader = assign({
   leader_i: ({leader_i, players: {length}}) => (leader_i + 1) % length,
 });
@@ -76,13 +80,16 @@ const storeCurrentVotes = assign({
   votes: (_, {votes}) => votes,
 });
 
+const clearVotes = assign({
+  votes: () => [],
+});
+
 const initContext = assign({
   players: initPlayers,
   leader_i: initLeaderIdx,
   nominees: [],
   quests: initQuests,
   quest_i: 0,
-  votes: [],
   rejections: 0,
 });
 
@@ -96,7 +103,6 @@ const gameMachine = Machine(
       nominees: [],
       quests: null,
       quest_i: null,
-      votes: [],
       rejections: null,
     },
 
@@ -130,7 +136,6 @@ const gameMachine = Machine(
           VOTE: {
             target: "tallyVotes",
             cond: "validVoting",
-            actions: storeCurrentVotes,
           },
         },
       },
@@ -139,9 +144,8 @@ const gameMachine = Machine(
         entry: logEvent("tallyVotes"),
         always: [
           {target: "questing", cond: "teamIsApproved"},
-          {target: "checkRejEOG", actions: incRejections},
+          {target: "rejected"},
         ],
-        //? exit: clearVotes,
       },
 
       questing: {
@@ -153,13 +157,12 @@ const gameMachine = Machine(
         // },
       },
 
-      checkRejEOG: {
-        entry: logEvent("check rejections end of game"),
-        type: "final",
-        // on: {
-        //   TRIGGER: "evilWins",
-        //   NEXT: "propose",
-        // },
+      rejected: {
+        entry: [logEvent("rejected team"), incRejections],
+        always: [
+          {target: "evilWins", cond: "overRejectionsLimit"},
+          {target: "propose", actions: [nextLeader, clearNominees]},
+        ],
       },
 
       checkSuccessEOG: {
@@ -225,8 +228,20 @@ const gameMachine = Machine(
         return votes.every((v) => typeof v === "boolean");
       },
 
-      teamIsApproved: ({votes, players: {length}}) =>
-        votes.filter(Boolean).length * 2 > length,
+      teamIsApproved: (
+        {players: {length}},
+        _,
+        // guards on transient transitions do not maintain original event
+        // https://github.com/davidkpiano/xstate/issues/890
+        // it is otherwise retrievable from the (meta).state.event
+        {
+          state: {
+            event: {votes},
+          },
+        },
+      ) => votes.filter(Boolean).length * 2 > length,
+
+      overRejectionsLimit: ({rejections}) => rejections >= 5,
     },
   },
 );
