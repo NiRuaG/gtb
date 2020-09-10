@@ -34,6 +34,20 @@ const Diagnostics: StyledComponent<Empty, Empty, HTMLDivElement> = styled.div`
   border-radius: 0.5rem;
 `;
 
+const Overlay: StyledComponent<Empty, Empty, HTMLDivElement> = styled.div`
+  ${fullScreenCss}
+  position: fixed;
+  background: crimson;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  left: 0;
+  opacity: 0.7;
+`;
+
 export default () => {
   const {
     socket,
@@ -48,15 +62,27 @@ export default () => {
     voteIdx,
     leaderID,
     canVote,
+    voteCount,
   } = useSocket();
 
   //? maybe consider other way than finding each time
   //? construct users as a map?
   const myUser =
     (myID != null && users.find(propSatisfies(equals(myID), "id"))) || null;
+  const myPlayer =
+    (myID != null && players.find(({user: {id}}) => id === myID)) || null;
 
   // const gameHasStarted = gameState !== "idle";
   const amLeader = leaderID != null && myUser?.id === leaderID;
+  const amOnQuest =
+    quests?.[questIdx ?? -1]?.voting?.[voteIdx ?? -1]?.team?.includes(
+      myUser?.id,
+    ) ?? false;
+  console.log("team", quests?.[questIdx ?? -1]?.voting?.[voteIdx ?? -1]?.team);
+  console.log({amOnQuest});
+  const amPrivileged = myUser?.privileged ?? false;
+
+  const handleNewGame = () => socket?.emit("newGame");
 
   return (
     <>
@@ -71,28 +97,44 @@ export default () => {
             players={players}
           />
 
-          <QuestsContent
-            socket={socket}
-            gameState={gameState}
-            quests={quests}
-            canVote={canVote}
-            // quests={[
-            //   {
-            //     voting: [
-            //       {
-            //         votes: players.map((p) => Math.random() > 0.5),
-            //         approved: Math.random() > 0.5,
-            //       },
-            //       {
-            //         votes: players.map((p) => Math.random() > 0.5),
-            //       },
-            // ]}
-            questIdx={questIdx}
-            voteIdx={voteIdx}
-            players={players}
-            amLeader={amLeader}
-          />
+          {quests == null || questIdx == null || voteIdx == null || (
+            <QuestsContent
+              socket={socket}
+              gameState={gameState}
+              quests={quests}
+              canVote={canVote}
+              questIdx={questIdx}
+              voteIdx={voteIdx}
+              players={players}
+              amLeader={amLeader}
+              amOnQuest={amOnQuest}
+              voteCount={voteCount}
+              myPlayer={myPlayer}
+            />
+          )}
         </MainLayout>
+      )}
+
+      {/* {true && ( */}
+      {gameState === "evilWinsByRejections" && (
+        <Overlay>
+          <div
+            style={{
+              display: "flex",
+              flexFlow: "column noWrap",
+              alignItems: "center",
+            }}
+          >
+            <h2 style={{color: "white"}}>
+              <em>Loyal eyes clouded by paranoia cannot see a way forward.</em>
+            </h2>
+            <h2 style={{color: "white"}}>
+              Mordred's dark forces of Evil triumph!
+            </h2>
+            {/* {true && ( */}
+            {amPrivileged && <button onClick={handleNewGame}>Again!</button>}
+          </div>
+        </Overlay>
       )}
 
       <Diagnostics>
@@ -103,7 +145,7 @@ export default () => {
           </small>
         </p>
         <p>Connected: {String(amConnected)}</p>
-        <p>Privileges: {String(myUser?.privileged)}</p>
+        <p>Privileges: {String(amPrivileged)}</p>
         <p>Permitted: {String(myUser?.permitted)}</p>
         <p>Game State: {gameState}</p>
       </Diagnostics>

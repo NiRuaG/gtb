@@ -1,8 +1,9 @@
 const {interpret} = require("xstate");
 const {canStart} = require("./config");
-const gameService = require("./machine");
+const gameMachine = require("./machine");
 const shuffle = require("./../../client/src/common/shuffle");
 const e = require("express");
+const {reset} = require("nodemon");
 
 const log = (msg, ...rest) => console.log("Game Server >", msg, ...rest);
 
@@ -17,16 +18,42 @@ class GameServer {
   constructor(server) {
     log("constructing game with server", server);
     this.server = server;
-    this.service = gameService;
+    this.service = interpret(gameMachine); // new interpreter instance
     this.questVotesHistory = Array(5).fill(null);
-    this.currentVotes = [];
+    // this.currentVotes = [];
+    this.finalDecisions = [];
+    this.decidedQuestIdx = null;
+    this.previousState = null;
+
+    const assignVoteHistoryToQuestsAndEmit = ({quests, quest_i}) => {
+      quests.forEach((quest, qi) => {
+        quest.voting = this.questVotesHistory[qi];
+      });
+
+      this.server.emit("quests", quests, quest_i);
+    };
 
     this.service.onTransition(({value, changed}) => {
       log("onTransition >", "value:", value, "changed:", changed);
       this.lastStateChanged = changed;
-      this.currentState = value;
       log(`emitting gameState as "${value}"`);
-      server.emit("gameState", value);
+      this.server.emit("gameState", value);
+
+      //? could be better, there might be more to the
+      // parameters of onTransition, maybe not have to store prevState
+      if (this.previousState === "questing" && value !== "questing") {
+        const {quests, quest_i} = this.service.state.context;
+
+        quests[this.decidedQuestIdx].failures = this.finalDecisions.filter(
+          (d) => d === false,
+        ).length;
+
+        assignVoteHistoryToQuestsAndEmit({quests, quest_i});
+        this.finalDecisions = [];
+        this.decidedQuestIdx = null;
+      }
+
+      this.previousState = value;
     });
 
     // Context change listener
@@ -46,6 +73,7 @@ class GameServer {
         leader_i,
         rejections,
         nominees,
+        decisions,
       } = newContext;
 
       //? player character assignment only needs to be done once
@@ -86,7 +114,6 @@ class GameServer {
           });
         }
 
-        console.log({nominees}, this.questVotesHistory);
         if (
           nominees.length &&
           this.questVotesHistory[quest_i][rejections].team == null
@@ -95,32 +122,18 @@ class GameServer {
             (idx) => this.usersByPlayerIdx.get(idx).id,
           );
         }
-        console.log("qvh", this.questVotesHistory);
 
-        quests.forEach((quest, qi) => {
-          quest.voting = this.questVotesHistory[qi];
-        });
+        this.finalDecisions = decisions.filter((d) => d != null);
+        this.decidedQuestIdx = quest_i;
 
-        console.log({quests});
-
-        // quests.forEach((quest, qi) => {
-        //   if (quest.voting) {
-        //     console.log("quest.voting", quest.voting);
-        //     quest.voting.forEach((oneVoting, vi) => {
-        //       oneVoting.votes = this.voteHistory[qi][vi];
-        //     });
-        //   }
-        // });
-        // console.log("vote.history", this.voteHistory);
+        assignVoteHistoryToQuestsAndEmit({quests, quest_i});
         // console.log({quests});
-
-        server.emit("quests", quests, quest_i);
       }
 
-      server.emit("voteIdx", rejections); // TODO: consistency
+      this.server.emit("voteIdx", rejections); // TODO: consistency of var name
 
       if (leader_i != null) {
-        server.emit("leaderID", this.usersByPlayerIdx.get(leader_i).id);
+        this.server.emit("leaderID", this.usersByPlayerIdx.get(leader_i).id);
       }
     });
 
@@ -129,6 +142,8 @@ class GameServer {
 
   hasStarted = () =>
     this.service.state.value !== this.service.machine.initialState.value;
+
+  hasFinished = () => this.service.state.done;
 
   canStart = canStart;
 
@@ -171,57 +186,62 @@ class GameServer {
       });
 
       user.connection.on("castVote", (approval) => {
-        console.log(user.name, "approval", approval);
-        // console.log(this.service.state.context);
+        console.log("Received vote from user", user.id, {approval});
+
         if (this.currentVotes[thisPlayerIdx] == null) {
           this.currentVotes[thisPlayerIdx] = approval;
         } else {
-          //? TODO log
+          console.log("..but already have vote recorded for user");
+          console.log(
+            "..vote does not change from",
+            this.currentVotes[thisPlayerIdx],
+          );
         }
 
         user.connection.emit("canVote", false);
+        const voteCount = this.currentVotes.filter((v) => v != null).length;
+        this.server.emit("voteCount", voteCount);
 
-        if (this.currentVotes.every((v) => v != null)) {
-          console.log("have all votes", this.currentVotes);
-
+        if (voteCount === users.length) {
+          console.log("..now have all votes", this.currentVotes);
           const {quest_i, rejections} = this.service.state.context;
-          // console.log(
-          //   {quest_i, rejections},
-          //   this.currentVotes,
-          //   this.voteHistory,
-          // );
           this.questVotesHistory[quest_i][rejections].votes = this.currentVotes;
-          // quests[quest_i].voting = Array.from({length: 5}, (_, i) => {
-          //   const leaderID = this.usersByPlayerIdx.get(
-          //     (leader_i + i) % this.usersByPlayerIdx.size,
-          //   ).id;
-
-          //   return {leaderID};
-          // });
-
-          // quests[quest_i].voting[rejections].team = nominees.map(
-          //   (idx) => this.usersByPlayerIdx.get(idx).id,
-          // );
-
-          // quests.forEach((quest, qi) => {
-          //   if (quest.voting) {
-          //     console.log("quest.voting", quest.voting);
-          //     quest.voting.forEach((oneVoting, vi) => {
-          //       oneVoting.votes = this.voteHistory[qi][vi];
-          //     });
-          //   }
-          // });
-          // console.log("vote.history", this.voteHistory);
-          // console.log({quests});
 
           this.service.send("VOTE", {votes: this.currentVotes});
 
           if (!this.lastStateChanged) {
             //TODO
           }
+
+          this.server.emit("voteCount", 0);
         }
-        //TODO this.voteHistory[this.service.machine.context.quest_i];
       });
+
+      user.connection.on("decide", (decision) => {
+        console.log("Received", {decision}, "from user", user.id);
+        this.service.send("DECIDE", {sourcePlayerIdx: thisPlayerIdx, decision});
+
+        if (!this.lastStateChanged) {
+          // TODO
+          return;
+        }
+
+        // at this point, decision was accepted
+        //? could help ui and emit that player can no longer decide
+        // lastStateChanged will be true (even if from questing > questing)
+        // so long as it passed the guard
+      });
+    });
+
+    this.service.onDone(() => {
+      console.log("Service done, stopping");
+      users.forEach(({connection}) => {
+        connection
+          .removeAllListeners("propose")
+          .removeAllListeners("castVote")
+          .removeAllListeners("canDecide");
+      });
+      this.service.stop();
     });
 
     return true; // signify game started successfully

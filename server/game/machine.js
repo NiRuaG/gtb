@@ -72,16 +72,26 @@ const nextLeader = assign({
   leader_i: ({leader_i, players: {length}}) => (leader_i + 1) % length,
 });
 
+const nextQuest = assign({
+  quest_i: ({quest_i}) => quest_i + 1,
+});
+
 const incRejections = assign({
   rejections: ({rejections}) => rejections + 1,
 });
 
-const storeCurrentVotes = assign({
-  votes: (_, {votes}) => votes,
+const addDecision = assign({
+  decisions: ({decisions}, {sourcePlayerIdx: i, decision}) => (
+    (decisions[i] = decision), decisions
+  ),
 });
 
-const clearVotes = assign({
-  votes: () => [],
+const clearDecisions = assign({
+  decisions: () => [],
+});
+
+const failQuest = assign({
+  quests: ({quests, quest_i}) => ((quests[quest_i].side = "evil"), [...quests]),
 });
 
 const initContext = assign({
@@ -91,6 +101,7 @@ const initContext = assign({
   quests: initQuests,
   quest_i: 0,
   rejections: 0,
+  decisions: [],
 });
 
 const gameMachine = Machine(
@@ -104,24 +115,25 @@ const gameMachine = Machine(
       quests: null,
       quest_i: null,
       rejections: null,
+      decisions: [],
     },
 
     initial: "idle",
 
     states: {
       idle: {
+        entry: logEvent("idle"),
         on: {
           START: {
             target: "propose",
-            actions: initContext,
             cond: "canStart",
           },
         },
-        // exit: log("exit from idle"),
+        exit: [initContext],
       },
 
       propose: {
-        // entry: log("entered propose"),
+        entry: [logEvent("propose"), nextLeader, clearNominees],
         on: {
           NOMINATE: {
             target: "castVotes",
@@ -132,10 +144,11 @@ const gameMachine = Machine(
       },
 
       castVotes: {
+        entry: logEvent("castVotes"),
         on: {
           VOTE: {
             target: "tallyVotes",
-            cond: "validVoting",
+            cond: "votesAreValid",
           },
         },
       },
@@ -143,40 +156,60 @@ const gameMachine = Machine(
       tallyVotes: {
         entry: logEvent("tallyVotes"),
         always: [
-          {target: "questing", cond: "teamIsApproved"},
-          {target: "rejected"},
+          {target: "rejected", cond: "teamIsRejected"},
+          {target: "questing"},
         ],
-      },
-
-      questing: {
-        entry: logEvent("questing"),
-        type: "final",
-        // on: {
-        //   SUCCESS: "checkSuccessEOG",
-        //   FAILURE: "checkFailEOG",
-        // },
       },
 
       rejected: {
         entry: [logEvent("rejected team"), incRejections],
         always: [
-          {target: "evilWins", cond: "overRejectionsLimit"},
-          {target: "propose", actions: [nextLeader, clearNominees]},
+          {target: "evilWinsByRejections", cond: "overRejectionsLimit"},
+          {target: "propose"},
         ],
+      },
+
+      questing: {
+        entry: logEvent("questing"),
+        always: [{target: "tallyDecisions", cond: "allDecisionsReceived"}],
+        on: {
+          DECIDE: {
+            actions: addDecision,
+            cond: "canDecide",
+            internal: false,
+          },
+        },
+      },
+
+      tallyDecisions: {
+        entry: logEvent("tallyDecisions"),
+        always: [
+          {
+            cond: "questFailed",
+            actions: [failQuest],
+            target: "checkFailureEOG",
+          },
+          {target: "checkSuccessEOG"},
+        ],
+        exit: clearDecisions,
+      },
+
+      checkFailureEOG: {
+        entry: logEvent("check quest fail end of game"),
+        always: [
+          {cond: "failMajority", target: "evilWinsByQuestFails"},
+          {target: "propose", actions: [nextQuest]},
+        ],
+        // on: {
+        //   TRIGGER: "evilWins",
+        //   NEXT: "propose",
+        // },
       },
 
       checkSuccessEOG: {
         entry: logEvent("check quest success end of game"),
         on: {
           TRIGGER: "assassinate",
-          NEXT: "propose",
-        },
-      },
-
-      checkFailEOG: {
-        entry: logEvent("check quest fail end of game"),
-        on: {
-          TRIGGER: "evilWins",
           NEXT: "propose",
         },
       },
@@ -191,6 +224,22 @@ const gameMachine = Machine(
 
       evilWins: {
         entry: logEvent("evil wins"),
+        type: "final",
+      },
+
+      //? could be better?, unify with evilWins
+      // further unify with an 'end of game' state?
+      // but what way to indicate cause of end of game, context?
+      // or should machine not need or care to know why
+      // let interpreter well.. interpret how a game ended
+      // via considering prev state and other context
+      evilWinsByRejections: {
+        entry: logEvent("evil wins by rejections"),
+        type: "final",
+      },
+
+      evilWinsByQuestFails: {
+        entry: logEvent("evil wins by quest fails"),
         type: "final",
       },
 
@@ -209,18 +258,29 @@ const gameMachine = Machine(
         {quests, quest_i, leader_i, players: {length}},
         {sourcePlayerIdx, nominees},
       ) => {
-        if (!Array.isArray(nominees) || sourcePlayerIdx == null) return false;
+        if (!Array.isArray(nominees)) return false;
+        if (nominees.length !== quests[quest_i].teamSize) return false;
 
         const proposedByLeader = sourcePlayerIdx === leader_i;
-        const correctTeamSize = nominees.length === quests[quest_i].teamSize;
         const validTeamIndices = nominees.every(
           (idx) => idx >= 0 && idx < length,
         );
 
-        return proposedByLeader && correctTeamSize && validTeamIndices;
+        return proposedByLeader && validTeamIndices;
       },
 
-      validVoting: ({players: {length}}, {votes}) => {
+      canDecide: (
+        {decisions, nominees, players},
+        {sourcePlayerIdx, decision},
+      ) => {
+        if (typeof decision !== "boolean") return false;
+        if (!nominees.includes(sourcePlayerIdx)) return false;
+        if (decisions[sourcePlayerIdx] != null) return false;
+
+        return decision || players[sourcePlayerIdx].character.side === "evil";
+      },
+
+      votesAreValid: ({players: {length}}, {votes}) => {
         if (!Array.isArray(votes)) return false;
 
         if (votes.length !== length) return false;
@@ -228,7 +288,7 @@ const gameMachine = Machine(
         return votes.every((v) => typeof v === "boolean");
       },
 
-      teamIsApproved: (
+      teamIsRejected: (
         {players: {length}},
         _,
         // guards on transient transitions do not maintain original event
@@ -239,11 +299,22 @@ const gameMachine = Machine(
             event: {votes},
           },
         },
-      ) => votes.filter(Boolean).length * 2 > length,
+      ) => votes.filter(Boolean).length * 2 <= length,
 
       overRejectionsLimit: ({rejections}) => rejections >= 5,
+
+      allDecisionsReceived: ({decisions, nominees}) =>
+        decisions.filter((d) => d != null).length === nominees.length,
+
+      questFailed: ({decisions, nominees, quests, quest_i}) => {
+        const failCount = nominees.length - decisions.filter(Boolean).length;
+        return failCount >= quests[quest_i].failsReq;
+      },
+
+      failMajority: ({quests}) =>
+        quests.filter(({side}) => side === "evil").length >= 3,
     },
   },
 );
 
-module.exports = interpret(gameMachine);
+module.exports = gameMachine;

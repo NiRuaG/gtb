@@ -3,20 +3,23 @@
 import React, {useState, useEffect} from "react";
 import {splitAt} from "ramda";
 
-import type {Players} from "Player";
+import type {Players, PlayerT} from "Player";
 import Quest, {VoteTrack, type QuestT, type Quests} from "Quest";
 import type {UserID, UserT} from "User";
 import type {Socket} from "socket/hook";
 
 type Props = {|
   +socket: ?Socket,
-  +quests: ?Quests,
-  +questIdx: ?number,
+  +quests: Quests,
+  +questIdx: number,
   +players: Players,
-  +voteIdx: ?number,
+  +voteIdx: number,
   +amLeader: boolean,
+  +amOnQuest: boolean,
   +gameState: string,
   +canVote: boolean,
+  +voteCount: number,
+  +myPlayer: ?PlayerT,
 |};
 
 export default ({
@@ -25,28 +28,19 @@ export default ({
   players,
   voteIdx,
   amLeader,
+  amOnQuest,
   socket,
   gameState,
   canVote,
+  voteCount,
+  myPlayer,
 }: Props) => {
   const [proposedTeamIDs, setProposedTeamIDs] = useState(new Set<UserID>());
-  const [myVote, setMyVote] = useState<?boolean>(null);
-
-  useEffect(() => setMyVote(null), [voteIdx]);
-
-  if (quests == null || questIdx == null || voteIdx == null) return null;
 
   const [
     completedQuests,
     [currentQuest, ...incompleteQuests],
   ] = splitAt<QuestT>(questIdx, quests);
-
-  const canPropose = proposedTeamIDs.size === currentQuest.teamSize;
-
-  const proposeTeam = () => {
-    if (!canPropose) return;
-    return socket?.emit("propose", [...proposedTeamIDs]);
-  };
 
   const toggleOnTeam = ({id}) => {
     if (proposedTeamIDs.has(id)) {
@@ -55,10 +49,6 @@ export default ({
       setProposedTeamIDs((ids) => new Set(ids).add(id));
     }
   };
-
-  const castMyVote = (approved) => (
-    setMyVote(approved), socket?.emit("castVote", approved)
-  );
 
   return (
     <>
@@ -125,12 +115,107 @@ export default ({
           padding: "1rem",
         }}
       >
-        {amLeader && gameState === "propose" ? (
+        <QuestActions
+          gameState={gameState}
+          amLeader={amLeader}
+          amOnQuest={amOnQuest}
+          socket={socket}
+          voteIdx={voteIdx}
+          canVote={canVote}
+          voteCount={voteCount}
+          proposedTeamIDs={proposedTeamIDs}
+          currentQuest={currentQuest}
+          players={players}
+          myPlayer={myPlayer}
+          questIdx={questIdx}
+        />
+      </div>
+
+      <div style={{gridRowStart: 1, gridColumnStart: "QFut", display: "flex"}}>
+        {incompleteQuests.map((quest, idx) => (
+          <Quest
+            key={`Quest-Incomplete-${idx}`}
+            quest={quest}
+            isCurrQuest={false}
+          />
+        ))}
+      </div>
+    </>
+  );
+};
+
+type QuestActionsProps = {|
+  +gameState: string,
+  +amLeader: boolean,
+  +amOnQuest: boolean,
+  +socket: ?Socket,
+  +questIdx: number,
+  +voteIdx: number,
+  +canVote: boolean,
+  +voteCount: number,
+  +proposedTeamIDs: $ReadOnlySet<UserID>,
+  +currentQuest: QuestT,
+  +players: Players,
+  +myPlayer: PlayerT,
+|};
+
+const QuestActions = ({
+  gameState,
+  amLeader,
+  amOnQuest,
+  socket,
+  voteIdx,
+  questIdx,
+  canVote,
+  voteCount,
+  proposedTeamIDs,
+  currentQuest,
+  players,
+  myPlayer,
+}: QuestActionsProps) => {
+  const [myVote, setMyVote] = useState<?boolean>(null);
+  const [myDecision, setMyDecision] = useState<?boolean>(null);
+
+  useEffect(() => {
+    setMyVote(null);
+    setMyDecision(null);
+  }, [voteIdx, questIdx]);
+
+  const canPropose = proposedTeamIDs.size === currentQuest.teamSize;
+
+  const proposeTeam = () => {
+    if (!canPropose) return;
+    return socket?.emit("propose", [...proposedTeamIDs]);
+  };
+
+  const castMyVote = (approved) => (
+    setMyVote(approved), socket?.emit("castVote", approved)
+  );
+
+  const decide = (decision) => (
+    setMyDecision(decision), socket?.emit("decide", decision)
+  );
+
+  // switch ("questing") {
+  switch (gameState) {
+    case "propose":
+      if (amLeader)
+        return (
           <button disabled={!canPropose} onClick={proposeTeam}>
             {`Propose (${proposedTeamIDs.size})`}
           </button>
-        ) : (
-          <>
+        );
+    //! fall-through, if not amLeader condition drops to this case
+    case "castVotes":
+      return (
+        <div
+          style={{
+            display: "flex",
+            flexFlow: "column nowrap",
+            alignItems: "center",
+          }}
+        >
+          <div>
             {myVote !== false && (
               <button disabled={!canVote} onClick={() => castMyVote(true)}>
                 {myVote != null ? "Approved ✔" : "Approve"}
@@ -146,21 +231,59 @@ export default ({
                 {myVote != null ? "Rejected ❌" : "Reject"}
               </button>
             )}
-          </>
-        )}
-      </div>
+          </div>
 
-      <div style={{gridRowStart: 1, gridColumnStart: "QFut", display: "flex"}}>
-        {incompleteQuests.map((quest, idx) => (
-          <Quest
-            key={`Quest-Incomplete-${idx}`}
-            quest={quest}
-            isCurrQuest={false}
-          />
-        ))}
-      </div>
-    </>
-  );
+          <p>
+            {voteCount}/{players.length} votes cast
+          </p>
+        </div>
+      );
+
+    case "questing":
+      const haveVoted = myDecision != null;
+      const couldFailQuest = !haveVoted && myPlayer?.character?.side === "evil";
+
+      return (
+        amOnQuest && (
+          <>
+            {myDecision !== false && (
+              <button
+                style={{
+                  flexBasis: "50%",
+                  background: "dodgerblue",
+                  color: "white",
+                }}
+                disabled={haveVoted}
+                onClick={() => decide(true)}
+              >
+                Success
+              </button>
+            )}
+
+            {myDecision !== true && (
+              <button
+                style={{
+                  marginLeft: "1rem",
+                  flexBasis: "50%",
+                  ...(couldFailQuest || haveVoted
+                    ? {
+                        background: "crimson",
+                        color: "white",
+                      }
+                    : {}),
+                }}
+                disabled={!couldFailQuest}
+                onClick={() => decide(false)}
+              >
+                Failure
+              </button>
+            )}
+          </>
+        )
+      );
+    default:
+      return null;
+  }
 };
 
 type PlayerVotingRowProps = {|

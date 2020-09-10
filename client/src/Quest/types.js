@@ -13,6 +13,7 @@ type VotingDetails = {|
 export type QuestT = {|
   +teamSize: number,
   +failsReq: number,
+  +failures?: number,
   +side?: Side,
   +voting?: $ReadOnlyArray<VotingDetails>,
 |};

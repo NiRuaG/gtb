@@ -9,7 +9,10 @@ type Props = {|
   quest: QuestT,
 |};
 
-export default ({isCurrQuest, quest: {teamSize, failsReq}}: Props) => (
+export default ({
+  isCurrQuest,
+  quest: {teamSize, failsReq, side = null, failures},
+}: Props) => (
   <div
     style={{
       display: "flex",
@@ -27,13 +30,25 @@ export default ({isCurrQuest, quest: {teamSize, failsReq}}: Props) => (
         width: "4rem",
         height: "4rem",
         borderRadius: "2rem",
-        border: "2px solid black",
-        color: isCurrQuest ? "white" : "black",
-        background: isCurrQuest ? "black" : "white",
+        border: side == null ? "2px solid black" : "none",
+        color: side != null || isCurrQuest ? "white" : "black",
+        background:
+          side != null
+            ? {
+                good: "dodgerblue",
+                evil: "crimson",
+              }[side]
+            : isCurrQuest
+            ? "black"
+            : "white",
       }}
     >
       <span style={{fontSize: "2rem"}}>{teamSize}</span>
     </div>
-    <p style={{visibility: failsReq > 1 ? "visible" : "hidden"}}>2 fails</p>
+    {failures ? (
+      <p>{failures} failures</p>
+    ) : (
+      <p style={{visibility: failsReq > 1 ? "visible" : "hidden"}}>2 fails</p>
+    )}
   </div>
 );

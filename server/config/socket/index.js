@@ -258,8 +258,8 @@ module.exports = (server, GameServer) => {
     clientSocket.on("disconnect", () => {
       //! for dev, needs fix
       if (gameServer.hasStarted()) {
-        gameServer.service.stop();
-        gameServer = new GameServer(server);
+        gameServer.service.start(); // restart
+        // gameServer = new GameServer(server);
         //! after dev, make gameServer const
       }
 
@@ -318,6 +318,26 @@ module.exports = (server, GameServer) => {
           connection.disconnect(true);
         }
       });
+      emitUsers();
+    });
+
+    clientSocket.on("newGame", () => {
+      console.log("New game initiated by user id", clientSocket.id);
+      if (!privilegedUserIDs.has(clientSocket.id)) {
+        console.log("..but user not privileged\n:aborting");
+        return;
+      }
+      if (!gameServer.hasStarted()) {
+        console.log("..but game hasn't started\n:aborting");
+        return;
+      }
+      if (!gameServer.hasFinished()) {
+        console.log("..but game hasn't finished\n:aborting");
+        return;
+      }
+
+      gameServer = new GameServer(server);
+      emitReady();
       emitUsers();
     });
   });

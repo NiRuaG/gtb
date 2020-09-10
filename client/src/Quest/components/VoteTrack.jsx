@@ -50,7 +50,7 @@ export default ({
             <div
               key={`vote-track-${i}`}
               style={{
-                borderLeft: "1px solid",
+                borderLeft: "1px solid black",
                 width: "2.8rem",
                 display: "flex",
                 justifyContent: "center",
