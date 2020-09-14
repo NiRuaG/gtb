@@ -19,7 +19,7 @@ type Empty = {||};
 const MainLayout: StyledComponent<Empty, Empty, HTMLDivElement> = styled.div`
   ${fullScreenCss}
   display: grid;
-  grid-template-columns: max-content [QComp] max-content [QCurr] max-content [QFut] max-content;
+  grid-template-columns: max-content [Q1] max-content [Q2] max-content [Q3] max-content [Q4] max-content [Q5] max-content;
   grid-template-rows: max-content repeat(10, 1fr) max-content;
   background: white;
   padding: 2rem 3rem;
@@ -65,6 +65,8 @@ export default () => {
     voteCount,
   } = useSocket();
 
+  console.log({quests});
+
   //? maybe consider other way than finding each time
   //? construct users as a map?
   const myUser =
@@ -97,26 +99,96 @@ export default () => {
             players={players}
           />
 
+          {/* {true && ( */}
           {quests == null || questIdx == null || voteIdx == null || (
             <QuestsContent
               socket={socket}
               gameState={gameState}
-              quests={quests}
-              canVote={canVote}
-              questIdx={questIdx}
-              voteIdx={voteIdx}
-              players={players}
               amLeader={amLeader}
               amOnQuest={amOnQuest}
               voteCount={voteCount}
               myPlayer={myPlayer}
+              canVote={canVote}
+              quests={quests}
+              voteIdx={voteIdx}
+              questIdx={questIdx}
+              players={players}
+              // quests={[
+              //   {
+              //     teamSize: 2,
+              //     failsReq: 1,
+              //     side: "good",
+              //     failures: 2,
+              //     voting: [
+              //       {
+              //         leaderID: "E",
+              //         votes: [false, false, false, false, false],
+              //       },
+              //       {
+              //         leaderID: "D",
+              //         votes: [true, true, true, true, true],
+              //         approved: true,
+              //         team: ["A", "B"],
+              //       },
+              //       {leaderID: "C", votes: []},
+              //       {leaderID: "B", votes: []},
+              //       {leaderID: "A", votes: []},
+              //     ],
+              //   },
+              //   {
+              //     teamSize: 3,
+              //     failsReq: 1,
+              //     side: "evil",
+              //     voting: [
+              //       {
+              //         leaderID: "A",
+              //         votes: [false, false, false, true, true],
+              //         approved: true,
+              //       },
+              //       {leaderID: "B", votes: []},
+              //       {leaderID: "C", votes: []},
+              //       {leaderID: "D", votes: []},
+              //       {leaderID: "E", votes: []},
+              //     ],
+              //   },
+              //   {
+              //     teamSize: 3,
+              //     failsReq: 1,
+              //     voting: [
+              //       {
+              //         leaderID: "A",
+              //         votes: [true, true, true, true, true],
+              //       },
+              //       {leaderID: "B", votes: []},
+              //       {leaderID: "C", votes: []},
+              //       {leaderID: "D", votes: []},
+              //       {leaderID: "E", votes: []},
+              //     ],
+              //   },
+              //   {
+              //     teamSize: 3,
+              //     failsReq: 2,
+              //   },
+              //   {
+              //     teamSize: 3,
+              //     failsReq: 1,
+              //   },
+              // ]}
+              // questIdx={2}
+              // voteIdx={1}
+              // players={[
+              //   {user: {id: "A"}},
+              //   {user: {id: "B"}},
+              //   {user: {id: "C"}},
+              //   {user: {id: "D"}},
+              //   {user: {id: "E"}},
+              // ]}
             />
           )}
         </MainLayout>
       )}
 
-      {/* {true && ( */}
-      {gameState === "evilWinsByRejections" && (
+      {["evilWinsByRejections", "evilWinsByQuestFails"].includes(gameState) && (
         <Overlay>
           <div
             style={{
@@ -126,12 +198,18 @@ export default () => {
             }}
           >
             <h2 style={{color: "white"}}>
-              <em>Loyal eyes clouded by paranoia cannot see a way forward.</em>
+              <em>
+                {
+                  {
+                    evilWinsByRejections:
+                      "Loyal eyes clouded by paranoia cannot see a way forward.",
+                    evilWinsByQuestFails:
+                      "Traitors of the crown have sabotaged the mission.",
+                  }[gameState]
+                }
+              </em>
+              <p>Mordred's dark forces triumph!</p>
             </h2>
-            <h2 style={{color: "white"}}>
-              Mordred's dark forces of Evil triumph!
-            </h2>
-            {/* {true && ( */}
             {amPrivileged && <button onClick={handleNewGame}>Again!</button>}
           </div>
         </Overlay>

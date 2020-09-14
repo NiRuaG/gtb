@@ -11,7 +11,6 @@ type Character = {|
 
 export type PlayerT = {|
   +character?: Character,
-  +isLeader: boolean,
   +user: UserT,
 |};
 

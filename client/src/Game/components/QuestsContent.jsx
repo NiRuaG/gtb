@@ -36,6 +36,7 @@ export default ({
   myPlayer,
 }: Props) => {
   const [proposedTeamIDs, setProposedTeamIDs] = useState(new Set<UserID>());
+  useEffect(() => setProposedTeamIDs(new Set()), [questIdx]);
 
   const [
     completedQuests,
@@ -52,16 +53,61 @@ export default ({
 
   return (
     <>
-      <div style={{gridColumnStart: "QComp", display: "flex"}}>
-        {completedQuests.map((quest, idx) => (
-          <Quest key={`Quest-Comp-${idx}`} quest={quest} isCurrQuest={false} />
-        ))}
-      </div>
+      {completedQuests.map((quest, idx) => {
+        const approvedIdx =
+          quest.voting?.findIndex(({approved}) => approved) ?? 0;
+
+        return (
+          <>
+            <div
+              style={{
+                gridColumnStart: `Q${idx + 1}`,
+                display: "flex",
+                flexFlow: "column nowrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Quest
+                key={`Quest-Comp-${idx}`}
+                quest={quest}
+                isCurrQuest={false}
+              />
+
+              <VoteTrack voteIdx={approvedIdx} single={true} />
+            </div>
+
+            {players.map(({user}, pi) => (
+              <div
+                key={user.id}
+                style={{
+                  gridRowStart: pi + 2,
+                  gridColumnStart: `Q${idx + 1}`,
+                  display: "flex",
+                  justifyContent: "space-around",
+                }}
+              >
+                <PlayerVotingRow
+                  playerIdx={pi}
+                  quest={quest}
+                  user={user}
+                  amLeader={amLeader}
+                  proposedTeamIDs={proposedTeamIDs}
+                  onUserClick={() => toggleOnTeam(user)}
+                  gameState={gameState}
+                  voteIdx={approvedIdx}
+                  single={true}
+                />
+              </div>
+            ))}
+          </>
+        );
+      })}
 
       <div
         style={{
           gridRowStart: 1,
-          gridColumnStart: "QCurr",
+          gridColumnStart: `Q${questIdx + 1}`,
           display: "flex",
           flexFlow: "column nowrap",
           alignItems: "center",
@@ -69,15 +115,7 @@ export default ({
       >
         <Quest quest={currentQuest} isCurrQuest={true} />
 
-        <VoteTrack
-          quest={currentQuest}
-          players={players}
-          voteIdx={voteIdx}
-          amLeader={amLeader}
-          socket={socket}
-          gameState={gameState}
-          proposedTeamIDs={proposedTeamIDs}
-        />
+        <VoteTrack voteIdx={voteIdx} />
       </div>
 
       {players.map(({user}, pi) => (
@@ -85,11 +123,10 @@ export default ({
           key={user.id}
           style={{
             gridRowStart: pi + 2,
-            gridColumnStart: 3,
+            gridColumnStart: `Q${questIdx + 1}`,
             display: "flex",
             justifyContent: "space-around",
             borderRight: "1px solid",
-            borderBottom: "1px solid",
           }}
         >
           <PlayerVotingRow
@@ -108,7 +145,7 @@ export default ({
       <div
         style={{
           gridRowStart: players.length + 2,
-          gridColumnStart: "QCurr",
+          gridColumnStart: `Q${questIdx + 1}`,
           display: "flex",
           justifyContent: "center",
           height: "min-content",
@@ -131,15 +168,21 @@ export default ({
         />
       </div>
 
-      <div style={{gridRowStart: 1, gridColumnStart: "QFut", display: "flex"}}>
-        {incompleteQuests.map((quest, idx) => (
+      {incompleteQuests.map((quest, idx) => (
+        <div
+          style={{
+            gridRowStart: 1,
+            gridColumnStart: `Q${idx + questIdx + 2}`,
+            display: "flex",
+          }}
+        >
           <Quest
             key={`Quest-Incomplete-${idx}`}
             quest={quest}
             isCurrQuest={false}
           />
-        ))}
-      </div>
+        </div>
+      ))}
     </>
   );
 };
@@ -295,6 +338,7 @@ type PlayerVotingRowProps = {|
   +voteIdx: number,
   +quest: QuestT,
   +gameState: string,
+  +single?: boolean,
 |};
 
 const PlayerVotingRow = ({
@@ -305,10 +349,13 @@ const PlayerVotingRow = ({
   user,
   voteIdx,
   quest: {voting},
+  single = false,
   gameState,
 }: PlayerVotingRowProps) => {
   return (
     voting?.map(({leaderID, team, votes}, vi) => {
+      if (single && vi !== voteIdx) return null;
+
       const teamSet = new Set(team);
       const approved = String(votes?.[playerIdx] ?? null);
 
@@ -321,6 +368,8 @@ const PlayerVotingRow = ({
             borderLeft: "1px solid",
             width: "2.8rem",
             alignItems: "center",
+            borderBottom: "1px solid",
+            borderRight: single ? "1px solid" : "none",
             background: {
               true: "mediumseagreen",
               false: "crimson",
@@ -328,7 +377,7 @@ const PlayerVotingRow = ({
             }[approved],
           }}
         >
-          {amLeader && vi === voteIdx && gameState === "propose" ? (
+          {!single && amLeader && vi === voteIdx && gameState === "propose" ? (
             <button
               style={{width: "90%"}}
               disabled={false}

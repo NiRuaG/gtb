@@ -46,9 +46,13 @@ export default ({
       <span style={{fontSize: "2rem"}}>{teamSize}</span>
     </div>
     {failures ? (
-      <p>{failures} failures</p>
+      <p>
+        <small>{failures} failures</small>
+      </p>
     ) : (
-      <p style={{visibility: failsReq > 1 ? "visible" : "hidden"}}>2 fails</p>
+      <p style={{visibility: failsReq > 1 ? "visible" : "hidden"}}>
+        <small>{failsReq} fails</small>
+      </p>
     )}
   </div>
 );

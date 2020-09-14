@@ -2,8 +2,6 @@ const {interpret} = require("xstate");
 const {canStart} = require("./config");
 const gameMachine = require("./machine");
 const shuffle = require("./../../client/src/common/shuffle");
-const e = require("express");
-const {reset} = require("nodemon");
 
 const log = (msg, ...rest) => console.log("Game Server >", msg, ...rest);
 
@@ -20,18 +18,9 @@ class GameServer {
     this.server = server;
     this.service = interpret(gameMachine); // new interpreter instance
     this.questVotesHistory = Array(5).fill(null);
-    // this.currentVotes = [];
-    this.finalDecisions = [];
+    this.currentVotes = [];
     this.decidedQuestIdx = null;
     this.previousState = null;
-
-    const assignVoteHistoryToQuestsAndEmit = ({quests, quest_i}) => {
-      quests.forEach((quest, qi) => {
-        quest.voting = this.questVotesHistory[qi];
-      });
-
-      this.server.emit("quests", quests, quest_i);
-    };
 
     this.service.onTransition(({value, changed}) => {
       log("onTransition >", "value:", value, "changed:", changed);
@@ -39,32 +28,12 @@ class GameServer {
       log(`emitting gameState as "${value}"`);
       this.server.emit("gameState", value);
 
-      //? could be better, there might be more to the
-      // parameters of onTransition, maybe not have to store prevState
-      if (this.previousState === "questing" && value !== "questing") {
-        const {quests, quest_i} = this.service.state.context;
-
-        quests[this.decidedQuestIdx].failures = this.finalDecisions.filter(
-          (d) => d === false,
-        ).length;
-
-        assignVoteHistoryToQuestsAndEmit({quests, quest_i});
-        this.finalDecisions = [];
-        this.decidedQuestIdx = null;
-      }
-
       this.previousState = value;
     });
 
     // Context change listener
     this.service.onChange((newContext, prevContext) => {
-      log(
-        "onChange > ",
-        "new context",
-        newContext,
-        "prev. context",
-        prevContext,
-      );
+      log("onChange >", {newContext}, {prevContext});
 
       const {
         players,
@@ -123,10 +92,7 @@ class GameServer {
           );
         }
 
-        this.finalDecisions = decisions.filter((d) => d != null);
-        this.decidedQuestIdx = quest_i;
-
-        assignVoteHistoryToQuestsAndEmit({quests, quest_i});
+        this.assignVoteHistoryToQuestsAndEmit({quests, quest_i});
         // console.log({quests});
       }
 
@@ -139,6 +105,16 @@ class GameServer {
 
     this.service.start();
   }
+
+  assignVoteHistoryToQuestsAndEmit = ({quests, quest_i}) => {
+    quests.forEach((quest, qi) => {
+      quest.voting = this.questVotesHistory[qi];
+    });
+
+    console.log("qvh", this.questVotesHistory);
+    console.log("quests", {quests});
+    this.server.emit("quests", quests, quest_i);
+  };
 
   hasStarted = () =>
     this.service.state.value !== this.service.machine.initialState.value;
@@ -213,12 +189,16 @@ class GameServer {
             //TODO
           }
 
+          if (this.service.state.value !== "propose") {
+            this.questVotesHistory[quest_i][rejections].approved = true;
+          }
           this.server.emit("voteCount", 0);
         }
       });
 
       user.connection.on("decide", (decision) => {
         console.log("Received", {decision}, "from user", user.id);
+        this.decidedQuestIdx = this.service.state.context.quest_i;
         this.service.send("DECIDE", {sourcePlayerIdx: thisPlayerIdx, decision});
 
         if (!this.lastStateChanged) {
@@ -230,6 +210,19 @@ class GameServer {
         //? could help ui and emit that player can no longer decide
         // lastStateChanged will be true (even if from questing > questing)
         // so long as it passed the guard
+        const {
+          context: {quests, quest_i, decisions},
+          value,
+        } = this.service.state;
+
+        if (value !== "questing") {
+          quests[this.decidedQuestIdx].failures = decisions.filter(
+            (d) => d === false,
+          ).length;
+
+          this.assignVoteHistoryToQuestsAndEmit({quests, quest_i});
+          this.decidedQuestIdx = null;
+        }
       });
     });
 
@@ -239,7 +232,7 @@ class GameServer {
         connection
           .removeAllListeners("propose")
           .removeAllListeners("castVote")
-          .removeAllListeners("canDecide");
+          .removeAllListeners("decide");
       });
       this.service.stop();
     });

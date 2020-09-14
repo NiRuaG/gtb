@@ -56,7 +56,8 @@ const initPlayers = (_, {players: {length}}) => {
   }));
 };
 
-const initQuests = (_, {players: {length}}) => CONFIG[length].quests;
+const initQuests = (_, {players: {length}}) =>
+  CONFIG[length].quests.map((q) => ({...q}));
 const initLeaderIdx = (_, {players: {length}}) =>
   Math.floor(Math.random() * length);
 
@@ -90,9 +91,16 @@ const clearDecisions = assign({
   decisions: () => [],
 });
 
-const failQuest = assign({
-  quests: ({quests, quest_i}) => ((quests[quest_i].side = "evil"), [...quests]),
+const resetRejections = assign({
+  rejections: 0,
 });
+
+const assignCurrentQuestSideOf = (side) =>
+  assign({
+    quests: ({quests, quest_i}) => ((quests[quest_i].side = side), quests),
+  });
+const failQuest = assignCurrentQuestSideOf("evil");
+const succeedQuest = assignCurrentQuestSideOf("good");
 
 const initContext = assign({
   players: initPlayers,
@@ -170,7 +178,7 @@ const gameMachine = Machine(
       },
 
       questing: {
-        entry: logEvent("questing"),
+        entry: [logEvent("questing"), clearDecisions],
         always: [{target: "tallyDecisions", cond: "allDecisionsReceived"}],
         on: {
           DECIDE: {
@@ -189,16 +197,18 @@ const gameMachine = Machine(
             actions: [failQuest],
             target: "checkFailureEOG",
           },
-          {target: "checkSuccessEOG"},
+          {
+            actions: [succeedQuest],
+            target: "checkSuccessEOG",
+          },
         ],
-        exit: clearDecisions,
       },
 
       checkFailureEOG: {
         entry: logEvent("check quest fail end of game"),
         always: [
           {cond: "failMajority", target: "evilWinsByQuestFails"},
-          {target: "propose", actions: [nextQuest]},
+          {target: "propose", actions: [nextQuest, resetRejections]},
         ],
         // on: {
         //   TRIGGER: "evilWins",
@@ -208,10 +218,10 @@ const gameMachine = Machine(
 
       checkSuccessEOG: {
         entry: logEvent("check quest success end of game"),
-        on: {
-          TRIGGER: "assassinate",
-          NEXT: "propose",
-        },
+        always: [
+          {cond: "successMajority", target: "assassinate"},
+          {target: "propose", actions: [nextQuest, resetRejections]},
+        ],
       },
 
       assassinate: {
@@ -280,10 +290,10 @@ const gameMachine = Machine(
         return decision || players[sourcePlayerIdx].character.side === "evil";
       },
 
-      votesAreValid: ({players: {length}}, {votes}) => {
+      votesAreValid: ({players}, {votes}) => {
         if (!Array.isArray(votes)) return false;
 
-        if (votes.length !== length) return false;
+        if (votes.length !== players.length) return false;
 
         return votes.every((v) => typeof v === "boolean");
       },
@@ -312,7 +322,10 @@ const gameMachine = Machine(
       },
 
       failMajority: ({quests}) =>
-        quests.filter(({side}) => side === "evil").length >= 3,
+        quests.filter(({side}) => side === "evil").length * 2 > quests.length,
+
+      successMajority: ({quests}) =>
+        quests.filter(({side}) => side === "good").length * 2 > quests.length,
     },
   },
 );

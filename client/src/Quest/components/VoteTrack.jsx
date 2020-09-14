@@ -2,30 +2,14 @@
 
 import React from "react";
 
-import type {Players} from "Player";
 import type {QuestT} from "Quest";
-import type {UserID} from "User";
-import type {Socket} from "socket/hook";
 
 type Props = {|
-  +quest: QuestT,
-  +players: Players,
   +voteIdx: number,
-  +amLeader: boolean,
-  +socket: ?Socket,
-  +gameState: string,
-  +proposedTeamIDs: $ReadOnlySet<UserID>,
+  +single?: boolean,
 |};
 
-export default ({
-  quest,
-  players,
-  voteIdx,
-  amLeader,
-  socket,
-  gameState,
-  proposedTeamIDs,
-}: Props) => {
+export default ({voteIdx, single = false}: Props) => {
   return (
     <div
       style={{
@@ -34,32 +18,36 @@ export default ({
         alignItems: "center",
       }}
     >
-      <p>Vote Track</p>
+      {!single && <p>Vote Track</p>}
 
       <div
         style={{
           display: "flex",
-          borderRight: "1px solid",
+          borderRight: single ? "none" : "1px solid",
           borderBottom: "1px solid",
         }}
       >
         {[1, 2, 3, 4, 5].map((i) => {
+          if (single && i - 1 !== voteIdx) return null;
+
           const isCurrVote = i - 1 === voteIdx;
 
           return (
             <div
               key={`vote-track-${i}`}
               style={{
-                borderLeft: "1px solid black",
+                borderLeft: single ? "none" : "1px solid black",
                 width: "2.8rem",
                 display: "flex",
                 justifyContent: "center",
-                background: isCurrVote
+                background: single
+                  ? "white"
+                  : isCurrVote
                   ? "black"
                   : i === 5
                   ? "lightcoral"
                   : "white",
-                color: isCurrVote ? "white" : "black",
+                color: isCurrVote && !single ? "white" : "black",
               }}
             >
               {i}
